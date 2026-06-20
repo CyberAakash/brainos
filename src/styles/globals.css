@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+/* ─── v2 Design Tokens ─── */
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Palette — warm earthy */
+  --accent: #BD6A47;
+  --accent-hover: #A85B3B;
+  --accent-subtle: rgba(189, 106, 71, 0.10);
+
+  --bg-main: #F5F3ED;
+  --bg-sidebar: #FAF8F3;
+  --bg-card: #FFFFFF;
+  --bg-overlay: rgba(0, 0, 0, 0.35);
+  --bg-input: #F0EBE1;
+  --bg-toast: #2B2823;
+
+  --border: #E9E5DC;
+  --border-light: #ECE7DC;
+  --border-medium: #E7E1D6;
+  --border-dark: #D8D1C2;
+
+  --text-primary: #21201C;
+  --text-secondary: #56524A;
+  --text-muted: #9A958A;
+  --text-faint: #A8A194;
+  --text-inverse: #F3EFE8;
+
+  /* Fonts */
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, Menlo, 'Cascadia Code', monospace;
+
+  /* Type meta colors */
+  --type-learning-bg: #E4EBE0;
+  --type-learning-fg: #4A6048;
+  --type-learning-dot: #7E9A6F;
+  --type-debugging-bg: #F0E0DA;
+  --type-debugging-fg: #8A4A38;
+  --type-debugging-dot: #B5694F;
+  --type-fix-bg: #F2E8D4;
+  --type-fix-fg: #7E6326;
+  --type-fix-dot: #B89248;
+  --type-insight-bg: #F2ECD2;
+  --type-insight-fg: #756321;
+  --type-insight-dot: #B79C3F;
+  --type-decision-bg: #DFE6EE;
+  --type-decision-fg: #3F5572;
+  --type-decision-dot: #6E89AB;
+  --type-architecture-bg: #E9E1EC;
+  --type-architecture-fg: #614A6E;
+  --type-architecture-dot: #927AA0;
+  --type-pattern-bg: #DDEAE7;
+  --type-pattern-fg: #3A5F58;
+  --type-pattern-dot: #6A9389;
+  --type-config-bg: #E8E5DD;
+  --type-config-fg: #5C584E;
+  --type-config-dot: #908A7C;
+  --type-reference-bg: #DCE9E9;
+  --type-reference-fg: #36605F;
+  --type-reference-dot: #689592;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 52px;
+  --detail-width: 420px;
+  --topbar-height: 48px;
+  --statusbar-height: 36px;
+}
+
+/* ─── Base ─── */
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-main);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #C8C3B8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #A8A194; }
+
+/* ─── Animations ─── */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes slideOutRight {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toastFadeUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes blink {
+  0%, 100% { opacity: .25; }
+  50% { opacity: 1; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fanIn {
+  from { opacity: 0; transform: rotate(0deg) translateY(0px) scale(0.92); }
+  to { opacity: 1; }
+}
+
+.animate-slideInRight { animation: slideInRight 0.22s ease-out; }
+.animate-fadeUp { animation: fadeUp 0.15s ease; }
+.animate-fadeIn { animation: fadeIn 0.15s ease; }
+.animate-scaleIn { animation: scaleIn 0.18s ease-out; }
+
+/* ─── Typography helpers ─── */
+.font-serif { font-family: var(--font-serif); }
+.font-sans { font-family: var(--font-sans); }
+.font-mono { font-family: var(--font-mono); }

@@ -1,0 +1,26 @@
+# Rust
+target/
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+
+# BrainOS data (never commit index or cache)
+index.db
+index.db-wal
+index.db-shm
+*.db
+cache/
+models/
+.devbrain-local/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

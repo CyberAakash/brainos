@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/v2/core/tauri-config-schema/schema.json",
+  "productName": "BrainOS",
+  "version": "0.1.0",
+  "identifier": "com.brainos.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "BrainOS",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}
