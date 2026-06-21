@@ -1,19 +1,21 @@
 import React, { useCallback } from "react";
 import { useStore } from "@/store";
-import type { MainMode } from "@/store";
 
 export default function TopBar() {
   const mainMode = useStore((s) => s.mainMode);
   const setMainMode = useStore((s) => s.setMainMode);
+  const goHome = useStore((s) => s.goHome);
   const togglePalette = useStore((s) => s.togglePalette);
   const openNew = useStore((s) => s.openNew);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const goBrowse = useStore((s) => s.goBrowse);
+  const settingsOpen = useStore((s) => s.settingsOpen);
+  const openSettings = useStore((s) => s.openSettings);
 
-  const handleNav = useCallback(
-    (mode: MainMode) => () => setMainMode(mode),
-    [setMainMode],
-  );
+  const handleGoHome = useCallback(() => {
+    goHome();
+    setMainMode("home");
+  }, [goHome, setMainMode]);
 
   const handleBrowseAll = useCallback(
     () => goBrowse("all", null, "All captures"),
@@ -41,7 +43,7 @@ export default function TopBar() {
         </svg>
       </button>
 
-      <button onClick={handleNav("home")} style={styles.logoBtn}>
+      <button onClick={handleGoHome} style={styles.logoBtn}>
         <span style={styles.logoDot} />
         <span style={styles.logoText}>BrainOS</span>
       </button>
@@ -49,7 +51,7 @@ export default function TopBar() {
       {/* Nav icons */}
       <div style={styles.navGroup}>
         <button
-          onClick={handleNav("home")}
+          onClick={handleGoHome}
           title="Home"
           style={{
             ...styles.navBtn,
@@ -98,7 +100,7 @@ export default function TopBar() {
       <div style={styles.spacer} />
 
       {/* Search button */}
-      <button onClick={togglePalette} style={styles.searchBtn}>
+      <button onClick={() => togglePalette()} style={styles.searchBtn}>
         <svg
           width="14"
           height="14"
@@ -131,11 +133,11 @@ export default function TopBar() {
 
       {/* Settings */}
       <button
-        onClick={handleNav("settings")}
-        title="Settings"
+        onClick={openSettings}
+        title="Settings (⌘,)"
         style={{
           ...styles.iconBtn,
-          color: mainMode === "settings" ? "#BD6A47" : "#8C887E",
+          color: settingsOpen ? "#BD6A47" : "#8C887E",
         }}
       >
         <svg

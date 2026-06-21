@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import { useStore, getTypeMeta } from "@/store";
+import { useEffect, useState } from "react";
+import { useStore } from "@/store";
 import { api } from "@/lib/ipc";
 import type { Capture, CaptureStatus } from "@/lib/ipc";
 import CanvasMarkdown from "./CanvasMarkdown";
@@ -63,13 +63,12 @@ export default function DetailPanel() {
   const loadCapture = useStore((s) => s.loadCapture);
   const captureCache = useStore((s) => s.captureCache);
   const attach = useStore((s) => s.attach);
-  const bookmark = useStore((s) => s.bookmark);
-  const unbookmark = useStore((s) => s.unbookmark);
-  const bookmarks = useStore((s) => s.bookmarks);
+  const favorite = useStore((s) => s.favorite);
+  const unfavorite = useStore((s) => s.unfavorite);
+  const favorites = useStore((s) => s.favorites);
   const deleteCapture = useStore((s) => s.deleteCapture);
   const openDetail = useStore((s) => s.openDetail);
   const showToast = useStore((s) => s.showToast);
-  const setMainMode = useStore((s) => s.setMainMode);
 
   const [capture, setCapture] = useState<Capture | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,9 +80,6 @@ export default function DetailPanel() {
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [addingTag, setAddingTag] = useState(false);
-  const [newTagValue, setNewTagValue] = useState("");
-  const titleRef = useRef<HTMLDivElement>(null);
 
   // Load capture data
   useEffect(() => {
@@ -100,14 +96,12 @@ export default function DetailPanel() {
     setEditBody("");
     setCopied(false);
     setShowDeleteConfirm(false);
-    setAddingTag(false);
     setFullscreen(false);
   }, [selectedId]);
 
 
   if (!detailOpen) return null;
 
-  const meta = capture ? getTypeMeta(capture.capture_type) : null;
   const bodyBlocks = capture ? parseBody(capture.body_text) : [];
 
   const handleCopy = () => {
@@ -171,88 +165,97 @@ export default function DetailPanel() {
   const handleAttachToChat = () => {
     if (!capture) return;
     attach(capture.id);
-    closeDetail();
-    setMainMode("home");
     showToast("Attached to chat context");
   };
 
-  /* ── Shared toolbar ── */
+  const isFav = capture ? favorites.includes(capture.id) : false;
+
+  /* ── Shared toolbar — icon-only ── */
   const toolbar = (
-    <div style={{
-      flex: "none", display: "flex", alignItems: "center", gap: 4,
-      padding: "7px 12px", borderBottom: "1px solid #E9E5DC", background: "#FAF8F3",
-    }}>
-      {/* File label */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0, overflow: "hidden" }}>
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#8C887E" strokeWidth="1.3">
-          <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
-          <line x1="5" y1="6" x2="11" y2="6" /><line x1="5" y1="8.5" x2="9" y2="8.5" />
-        </svg>
-        <span style={{ fontSize: 12.5, fontWeight: 500, color: "#21201C", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {capture?.title ?? "…"}
-        </span>
-        <span style={{ fontSize: 11, color: "#A8A194", flexShrink: 0 }}>· MD</span>
-      </div>
+    <>
+      <div style={{
+        flex: "none", display: "flex", alignItems: "center", gap: 4,
+        padding: "7px 12px", borderBottom: showDeleteConfirm ? "none" : "1px solid #E9E5DC", background: "#FAF8F3",
+      }}>
+        {/* Favorite */}
+        <TBtn title={isFav ? "Unfavorite" : "Favorite"} onClick={() => { if (!capture) return; isFav ? unfavorite(capture.id) : favorite(capture.id); }}>
+          <svg width="13" height="13" viewBox="0 0 14 14" fill={isFav ? "#BD6A47" : "none"} stroke={isFav ? "#BD6A47" : "currentColor"} strokeWidth="1.3"><path d="M7 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L7 10.43l-3.52 1.92.67-3.93L1.3 5.64l3.94-.57Z" /></svg>
+        </TBtn>
 
-      {/* Preview / Edit toggle */}
-      <div style={{ display: "inline-flex", background: "#EFEAE0", borderRadius: 7, padding: 2, gap: 1 }}>
-        <TBtn title="Preview" onClick={() => setTab("preview")} active={tab === "preview"}>
+        {/* Add to chat */}
+        <TBtn title="Add to chat" onClick={handleAttachToChat}>
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z" /><circle cx="8" cy="8" r="2" />
+            <path d="M2 3h12v8H5l-3 3V3z" />
           </svg>
         </TBtn>
-        <TBtn title="Edit" onClick={() => { if (tab !== "edit" && capture) { setEditBody(capture.body_text); setEditTitle(capture.title); setEditTags([...capture.tags]); } setTab("edit"); }} active={tab === "edit"}>
+
+        <div style={{ width: 1, height: 16, background: "#E3DED3" }} />
+
+        {/* Preview / Edit toggle */}
+        <div style={{ display: "inline-flex", background: "#EFEAE0", borderRadius: 7, padding: 2, gap: 1 }}>
+          <TBtn title="Preview" onClick={() => setTab("preview")} active={tab === "preview"}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z" /><circle cx="8" cy="8" r="2" />
+            </svg>
+          </TBtn>
+          <TBtn title="Code" onClick={() => { if (tab !== "edit" && capture) { setEditBody(capture.body_text); setEditTitle(capture.title); setEditTags([...capture.tags]); } setTab("edit"); }} active={tab === "edit"}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="5,4 1.5,8 5,12" /><polyline points="11,4 14.5,8 11,12" /><line x1="9.5" y1="3" x2="6.5" y2="13" />
+            </svg>
+          </TBtn>
+        </div>
+
+        <div style={{ width: 1, height: 16, background: "#E3DED3" }} />
+
+        {/* Copy */}
+        <TBtn title="Copy markdown" onClick={handleCopy}>
+          {copied ? (
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#5F8C5A" strokeWidth="1.8" strokeLinecap="round"><polyline points="3.5,8.5 6.5,11.5 12.5,4.5" /></svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><rect x="5" y="5" width="8" height="8" rx="1.5" /><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11" /></svg>
+          )}
+        </TBtn>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Fullscreen toggle */}
+        <TBtn title={fullscreen ? "Minimize" : "Expand"} onClick={() => setFullscreen(!fullscreen)}>
+          {fullscreen ? (
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="6,2 6,6 2,6" /><polyline points="10,14 10,10 14,10" /></svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="10,2 14,2 14,6" /><polyline points="6,14 2,14 2,10" /></svg>
+          )}
+        </TBtn>
+
+        {/* Delete */}
+        <TBtn title="Delete" onClick={() => setShowDeleteConfirm(true)} style={{ color: showDeleteConfirm ? "#BD6A47" : undefined }}>
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="5,4 1.5,8 5,12" /><polyline points="11,4 14.5,8 11,12" /><line x1="9.5" y1="3" x2="6.5" y2="13" />
+            <polyline points="3,5 4,13.5 12,13.5 13,5" /><line x1="2" y1="5" x2="14" y2="5" /><path d="M6 5V3.5a1 1 0 011-1h2a1 1 0 011 1V5" />
+          </svg>
+        </TBtn>
+
+        {/* Close */}
+        <TBtn title="Close" onClick={() => { closeDetail(); setFullscreen(false); }}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <line x1="4" y1="4" x2="12" y2="12" /><line x1="12" y1="4" x2="4" y2="12" />
           </svg>
         </TBtn>
       </div>
 
-      <div style={{ width: 1, height: 16, background: "#E3DED3" }} />
-
-      {/* Copy */}
-      <TBtn title="Copy markdown" onClick={handleCopy}>
-        {copied ? (
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#5F8C5A" strokeWidth="1.8" strokeLinecap="round"><polyline points="3.5,8.5 6.5,11.5 12.5,4.5" /></svg>
-        ) : (
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><rect x="5" y="5" width="8" height="8" rx="1.5" /><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11" /></svg>
-        )}
-      </TBtn>
-
-      {/* Attach to chat */}
-      <button
-        title="Attach to chat context"
-        onClick={handleAttachToChat}
-        style={{
-          display: "flex", alignItems: "center", gap: 4,
-          border: "1px solid #E7E1D6", background: "#FFFFFF", color: "#56524A",
-          borderRadius: 7, padding: "4px 9px", fontSize: 11.5, fontWeight: 500, cursor: "pointer", flexShrink: 0,
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#CDA18C"; e.currentTarget.style.background = "#FBF3EE"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E7E1D6"; e.currentTarget.style.background = "#FFFFFF"; }}
-      >
-        <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M3.5 2h7v10l-3.5-2.4L3.5 12Z" /></svg>
-        Attach
-      </button>
-
-      <div style={{ width: 1, height: 16, background: "#E3DED3" }} />
-
-      {/* Fullscreen toggle */}
-      <TBtn title={fullscreen ? "Exit fullscreen" : "Fullscreen"} onClick={() => setFullscreen(!fullscreen)}>
-        {fullscreen ? (
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="6,2 6,6 2,6" /><polyline points="10,14 10,10 14,10" /></svg>
-        ) : (
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="10,2 14,2 14,6" /><polyline points="6,14 2,14 2,10" /></svg>
-        )}
-      </TBtn>
-
-      {/* Close */}
-      <TBtn title="Close" onClick={() => { closeDetail(); setFullscreen(false); }}>
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-          <line x1="4" y1="4" x2="12" y2="12" /><line x1="12" y1="4" x2="4" y2="12" />
-        </svg>
-      </TBtn>
-    </div>
+      {/* Delete confirmation bar */}
+      {showDeleteConfirm && (
+        <div style={{
+          flex: "none", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 12px", background: "#FDF5F0", borderBottom: "1px solid #E8C4B2",
+        }}>
+          <span style={{ fontSize: 12.5, color: "#56524A", fontWeight: 500 }}>Delete this capture?</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setShowDeleteConfirm(false)} style={{ border: "1px solid #E7E1D6", background: "#FFFFFF", color: "#56524A", borderRadius: 7, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+            <button onClick={() => { if (capture) deleteCapture(capture.id); setShowDeleteConfirm(false); }} style={{ border: "none", background: "#BD6A47", color: "#FFFFFF", borderRadius: 7, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Delete</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 
   const statusColors: Record<CaptureStatus, { bg: string; fg: string }> = {
@@ -262,19 +265,17 @@ export default function DetailPanel() {
   };
 
   /* ── Meta section (shown in preview tab) ── */
-  const metaSection = capture && meta && (
+  const metaSection = capture && (
     <div style={{ padding: "20px 20px 0" }}>
-      {/* Title */}
-      <div
-        ref={titleRef} contentEditable suppressContentEditableWarning
-        style={{
-          fontFamily: "'Newsreader',Georgia,serif", fontSize: fullscreen ? 26 : 23,
-          fontWeight: 500, lineHeight: 1.25, color: "#21201C", outline: "none",
-          borderRadius: 6, padding: "2px 4px", margin: "-2px -4px",
-        }}
-        onFocus={(e) => { e.currentTarget.style.background = "#F3EFE6"; e.currentTarget.style.boxShadow = "0 0 0 2px #E3D8C6"; }}
-        onBlur={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; }}
-      >{capture.title}</div>
+      {/* Title — read-only in preview */}
+      <div style={{
+        fontFamily: "'Newsreader',Georgia,serif", fontSize: fullscreen ? 26 : 23,
+        fontWeight: 500, lineHeight: 1.25, color: "#21201C",
+        padding: "2px 0",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {capture.title}
+      </div>
 
       {/* Summary */}
       {capture.summary && (
@@ -283,11 +284,8 @@ export default function DetailPanel() {
         </div>
       )}
 
-      {/* Badges */}
+      {/* Badges — space, status, date (type removed) */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "none", borderRadius: 7, padding: "5px 10px", fontSize: "12.5px", fontWeight: 600, background: meta.bg, color: meta.fg }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: meta.dot }} />{capture.capture_type}
-        </span>
         <span style={{ display: "inline-flex", alignItems: "center", border: "1px solid #E7E1D6", background: "#FBFAF6", borderRadius: 7, padding: "5px 10px", fontSize: "12.5px", color: "#56524A" }}>{capture.space}</span>
         <span style={{ display: "inline-flex", alignItems: "center", background: statusColors[capture.status]?.bg ?? "#F2EDE3", borderRadius: 7, padding: "5px 10px", fontSize: "12.5px", fontWeight: 500, color: statusColors[capture.status]?.fg ?? "#8C887E" }}>{capture.status}</span>
         <span style={{ display: "inline-flex", alignItems: "center", background: "#F2EDE3", borderRadius: 7, padding: "5px 10px", fontSize: "12.5px", color: "#8C887E" }}>{capture.date}</span>
@@ -317,83 +315,14 @@ export default function DetailPanel() {
         </div>
       )}
 
-      {/* Tags */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>
-        {capture.tags.map((tag) => (
-          <span key={tag} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#F2EDE3", borderRadius: 6, padding: "4px 8px", fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12, color: "#6B6459" }}>
-            {tag}
-            <button
-              style={{ display: "flex", border: "none", background: "transparent", color: "#B3AE9F", cursor: "pointer", padding: 0 }}
-              onClick={() => showToast(`Remove tag "${tag}" (not yet implemented)`)}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#8A4A38"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "#B3AE9F"; }}
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2.5" y1="2.5" x2="7.5" y2="7.5" /><line x1="7.5" y1="2.5" x2="2.5" y2="7.5" /></svg>
-            </button>
-          </span>
-        ))}
-        {addingTag ? (
-          <input autoFocus value={newTagValue} onChange={(e) => setNewTagValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && newTagValue.trim()) { showToast("Tag added (save not implemented)"); setNewTagValue(""); setAddingTag(false); } else if (e.key === "Escape") { setNewTagValue(""); setAddingTag(false); } }}
-            onBlur={() => { if (newTagValue.trim()) showToast("Tag added (save not implemented)"); setNewTagValue(""); setAddingTag(false); }}
-            placeholder="tag name"
-            style={{ display: "inline-flex", border: "1px solid #BD6A47", borderRadius: 6, padding: "3px 8px", fontSize: 12, fontFamily: "ui-monospace,Menlo,monospace", color: "#21201C", background: "#FFFFFF", outline: "none", width: 90 }}
-          />
-        ) : (
-          <button
-            onClick={() => setAddingTag(true)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", border: "1px dashed #D8D1C2", borderRadius: 6, padding: "4px 8px", fontSize: 12, color: "#B3AE9F", cursor: "pointer" }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#BD6A47"; e.currentTarget.style.color = "#BD6A47"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#D8D1C2"; e.currentTarget.style.color = "#B3AE9F"; }}
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4"><line x1="5" y1="2" x2="5" y2="8" /><line x1="2" y1="5" x2="8" y2="5" /></svg>
-            Add tag
-          </button>
-        )}
-      </div>
-
-      {/* Action buttons */}
-      {showDeleteConfirm ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 18, background: "#FDF5F0", border: "1px solid #E8C4B2", borderRadius: 10, padding: "12px 16px" }}>
-          <span style={{ fontSize: 13, color: "#56524A", fontWeight: 500 }}>Delete this capture?</span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setShowDeleteConfirm(false)} style={{ border: "1px solid #E7E1D6", background: "#FFFFFF", color: "#56524A", borderRadius: 8, padding: "5px 14px", fontSize: "12.5px", cursor: "pointer" }}>Cancel</button>
-            <button onClick={() => { deleteCapture(capture!.id); setShowDeleteConfirm(false); }} style={{ border: "1px solid #BD6A47", background: "#BD6A47", color: "#FFFFFF", borderRadius: 8, padding: "5px 14px", fontSize: "12.5px", cursor: "pointer", fontWeight: 600 }}>Delete</button>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-          {(() => {
-            const isBm = bookmarks.includes(capture.id);
-            return (
-              <button
-                onClick={() => isBm ? unbookmark(capture.id) : bookmark(capture.id)}
-                style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid #E7E1D6", background: isBm ? "#F6E9E1" : "#FFFFFF", color: isBm ? "#9A4F30" : "#56524A", borderRadius: 8, padding: "6px 12px", fontSize: "12.5px", cursor: "pointer" }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#CDA18C"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E7E1D6"; }}
-              >
-                <svg width="13" height="13" viewBox="0 0 14 14" fill={isBm ? "#BD6A47" : "none"} stroke={isBm ? "#BD6A47" : "#9A847A"} strokeWidth="1.3"><path d="M3.5 2h7v10l-3.5-2.4L3.5 12Z" /></svg>
-                {isBm ? "Bookmarked" : "Bookmark"}
-              </button>
-            );
-          })()}
-          <button
-            onClick={() => { attach(capture.id); showToast("Attached to chat"); }}
-            style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid #E7E1D6", background: "#FFFFFF", color: "#56524A", borderRadius: 8, padding: "6px 12px", fontSize: "12.5px", cursor: "pointer" }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#D8D1C2"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E7E1D6"; }}
-          >
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><line x1="7" y1="2.5" x2="7" y2="11.5" /><line x1="2.5" y1="7" x2="11.5" y2="7" /></svg>
-            Attach
-          </button>
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid #E7E1D6", background: "#FFFFFF", color: "#BD6A47", borderRadius: 8, padding: "6px 12px", fontSize: "12.5px", cursor: "pointer" }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#FDF5F0"; e.currentTarget.style.borderColor = "#E8C4B2"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; e.currentTarget.style.borderColor = "#E7E1D6"; }}
-          >
-            Delete
-          </button>
+      {/* Tags — read-only in preview (edit in code mode) */}
+      {capture.tags.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>
+          {capture.tags.map((tag) => (
+            <span key={tag} style={{ display: "inline-flex", alignItems: "center", background: "#F2EDE3", borderRadius: 6, padding: "4px 8px", fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12, color: "#6B6459" }}>
+              {tag}
+            </span>
+          ))}
         </div>
       )}
 
@@ -553,7 +482,7 @@ export default function DetailPanel() {
   if (fullscreen) {
     return (
       <div style={{
-        position: "absolute", inset: 0, zIndex: 55, background: "#FCFBF7",
+        position: "fixed", top: 48, bottom: 36, left: 0, right: 0, zIndex: 55, background: "#FCFBF7",
         display: "flex", flexDirection: "column", animation: "fadeIn 0.12s ease",
       }}>
         {toolbar}
@@ -588,25 +517,19 @@ export default function DetailPanel() {
   }
 
   /* ══════════════════════════════════════════════════════════ */
-  /* Normal mode — floating panel on right, on top of content  */
+  /* Normal mode — fills its resizable panel container          */
   /* ══════════════════════════════════════════════════════════ */
   return (
     <div
-      className="animate-slideInRight"
       style={{
-        position: "absolute",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 440,
-        maxWidth: "92%",
-        zIndex: 45,
+        width: "100%",
+        height: "100%",
         background: "#FCFBF7",
         borderLeft: "1px solid #E7E3DA",
-        boxShadow: "-12px 0 40px rgba(40,36,28,.14)",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        boxSizing: "border-box",
       }}
     >
       {toolbar}

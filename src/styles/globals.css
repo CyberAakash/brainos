@@ -1,91 +1,153 @@
 @import "tailwindcss";
 
-/* ─── v2 Design Tokens ─── */
+/* ─── Google Fonts ─── */
 @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap');
 
-:root {
-  /* Palette — warm earthy */
-  --accent: #BD6A47;
-  --accent-hover: #A85B3B;
-  --accent-subtle: rgba(189, 106, 71, 0.10);
+/* ═══════════════════════════════════════════════════════════════════
+   Tailwind 4 Theme — BrainOS Design Tokens
+   ═══════════════════════════════════════════════════════════════════ */
+@theme {
+  /* ── Colors ── */
+  --color-accent: #BD6A47;
+  --color-accent-hover: #A85B3B;
+  --color-accent-subtle: rgba(189, 106, 71, 0.10);
 
-  --bg-main: #F5F3ED;
-  --bg-sidebar: #FAF8F3;
-  --bg-card: #FFFFFF;
-  --bg-overlay: rgba(0, 0, 0, 0.35);
-  --bg-input: #F0EBE1;
-  --bg-toast: #2B2823;
+  --color-bg-main: #F5F3ED;
+  --color-bg-sidebar: #FAF8F3;
+  --color-bg-card: #FFFFFF;
+  --color-bg-overlay: rgba(0, 0, 0, 0.35);
+  --color-bg-input: #F0EBE1;
+  --color-bg-toast: #2B2823;
 
-  --border: #E9E5DC;
-  --border-light: #ECE7DC;
-  --border-medium: #E7E1D6;
-  --border-dark: #D8D1C2;
+  --color-border: #E9E5DC;
+  --color-border-light: #ECE7DC;
+  --color-border-medium: #E7E1D6;
+  --color-border-dark: #D8D1C2;
 
-  --text-primary: #21201C;
-  --text-secondary: #56524A;
-  --text-muted: #9A958A;
-  --text-faint: #A8A194;
-  --text-inverse: #F3EFE8;
+  --color-text-primary: #21201C;
+  --color-text-secondary: #56524A;
+  --color-text-muted: #9A958A;
+  --color-text-faint: #A8A194;
+  --color-text-inverse: #F3EFE8;
 
-  /* Fonts */
+  /* ── Type meta colors ── */
+  --color-type-learning-bg: #E4EBE0;
+  --color-type-learning-fg: #4A6048;
+  --color-type-learning-dot: #7E9A6F;
+  --color-type-debugging-bg: #F0E0DA;
+  --color-type-debugging-fg: #8A4A38;
+  --color-type-debugging-dot: #B5694F;
+  --color-type-fix-bg: #F2E8D4;
+  --color-type-fix-fg: #7E6326;
+  --color-type-fix-dot: #B89248;
+  --color-type-insight-bg: #F2ECD2;
+  --color-type-insight-fg: #756321;
+  --color-type-insight-dot: #B79C3F;
+  --color-type-decision-bg: #DFE6EE;
+  --color-type-decision-fg: #3F5572;
+  --color-type-decision-dot: #6E89AB;
+  --color-type-architecture-bg: #E9E1EC;
+  --color-type-architecture-fg: #614A6E;
+  --color-type-architecture-dot: #927AA0;
+  --color-type-pattern-bg: #DDEAE7;
+  --color-type-pattern-fg: #3A5F58;
+  --color-type-pattern-dot: #6A9389;
+  --color-type-config-bg: #E8E5DD;
+  --color-type-config-fg: #5C584E;
+  --color-type-config-dot: #908A7C;
+  --color-type-reference-bg: #DCE9E9;
+  --color-type-reference-fg: #36605F;
+  --color-type-reference-dot: #689592;
+
+  /* ── Fonts ── */
   --font-serif: 'Newsreader', Georgia, serif;
   --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, Menlo, 'Cascadia Code', monospace;
 
-  /* Type meta colors */
-  --type-learning-bg: #E4EBE0;
-  --type-learning-fg: #4A6048;
-  --type-learning-dot: #7E9A6F;
-  --type-debugging-bg: #F0E0DA;
-  --type-debugging-fg: #8A4A38;
-  --type-debugging-dot: #B5694F;
-  --type-fix-bg: #F2E8D4;
-  --type-fix-fg: #7E6326;
-  --type-fix-dot: #B89248;
-  --type-insight-bg: #F2ECD2;
-  --type-insight-fg: #756321;
-  --type-insight-dot: #B79C3F;
-  --type-decision-bg: #DFE6EE;
-  --type-decision-fg: #3F5572;
-  --type-decision-dot: #6E89AB;
-  --type-architecture-bg: #E9E1EC;
-  --type-architecture-fg: #614A6E;
-  --type-architecture-dot: #927AA0;
-  --type-pattern-bg: #DDEAE7;
-  --type-pattern-fg: #3A5F58;
-  --type-pattern-dot: #6A9389;
-  --type-config-bg: #E8E5DD;
-  --type-config-fg: #5C584E;
-  --type-config-dot: #908A7C;
-  --type-reference-bg: #DCE9E9;
-  --type-reference-fg: #36605F;
-  --type-reference-dot: #689592;
+  /* ── Layout ── */
+  --spacing-sidebar: 240px;
+  --spacing-sidebar-collapsed: 52px;
+  --spacing-detail: 420px;
+  --spacing-topbar: 48px;
+  --spacing-statusbar: 36px;
 
-  /* Layout */
-  --sidebar-width: 240px;
-  --sidebar-collapsed-width: 52px;
-  --detail-width: 420px;
-  --topbar-height: 48px;
-  --statusbar-height: 36px;
+  /* ── Animations ── */
+  --animate-slide-in-right: slideInRight 0.22s ease-out;
+  --animate-slide-out-right: slideOutRight 0.22s ease-out;
+  --animate-fade-up: fadeUp 0.15s ease;
+  --animate-fade-in: fadeIn 0.15s ease;
+  --animate-scale-in: scaleIn 0.18s ease-out;
+  --animate-fan-in: fanIn 0.35s ease-out both;
+  --animate-ripple: rippleExpand 0.6s ease-out forwards;
+  --animate-shimmer: shimmer 1.5s infinite;
+  --animate-morph-success: morphSuccess 0.3s ease-out;
+  --animate-pulse-dot: pulseDot 1.4s ease-in-out infinite;
+  --animate-rotate-text: rotateText 0.3s ease;
 }
 
-/* ─── Base ─── */
+/* ── Legacy CSS variable aliases (backward compat during migration) ── */
+:root {
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+  --accent-subtle: var(--color-accent-subtle);
+  --bg-main: var(--color-bg-main);
+  --bg-sidebar: var(--color-bg-sidebar);
+  --bg-card: var(--color-bg-card);
+  --bg-overlay: var(--color-bg-overlay);
+  --bg-input: var(--color-bg-input);
+  --bg-toast: var(--color-bg-toast);
+  --border: var(--color-border);
+  --border-light: var(--color-border-light);
+  --border-medium: var(--color-border-medium);
+  --border-dark: var(--color-border-dark);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --text-faint: var(--color-text-faint);
+  --text-inverse: var(--color-text-inverse);
+  --font-serif: var(--font-serif);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --sidebar-width: var(--spacing-sidebar);
+  --sidebar-collapsed-width: var(--spacing-sidebar-collapsed);
+  --detail-width: var(--spacing-detail);
+  --topbar-height: var(--spacing-topbar);
+  --statusbar-height: var(--spacing-statusbar);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Base Styles
+   ═══════════════════════════════════════════════════════════════════ */
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: var(--bg-main);
-  color: var(--text-primary);
+  background: var(--color-bg-main);
+  color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Scrollbar ─── */
+/* ── Branded Selection ── */
+::selection {
+  background: rgba(189, 106, 71, 0.20);
+  color: var(--color-text-primary);
+}
+::-moz-selection {
+  background: rgba(189, 106, 71, 0.20);
+  color: var(--color-text-primary);
+}
+
+/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #C8C3B8; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #A8A194; }
 
-/* ─── Animations ─── */
+/* ═══════════════════════════════════════════════════════════════════
+   Keyframes
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Layout animations */
 @keyframes slideInRight {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
@@ -97,14 +159,6 @@ body {
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
-}
-@keyframes toastFadeUp {
-  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-@keyframes blink {
-  0%, 100% { opacity: .25; }
-  50% { opacity: 1; }
 }
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -118,13 +172,213 @@ body {
   from { opacity: 0; transform: rotate(0deg) translateY(0px) scale(0.92); }
   to { opacity: 1; }
 }
+@keyframes blink {
+  0%, 100% { opacity: .25; }
+  50% { opacity: 1; }
+}
+@keyframes toastFadeUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 
+/* Ripple effect */
+@keyframes rippleExpand {
+  from {
+    transform: scale(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Morphing button success */
+@keyframes morphSuccess {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+/* Typing indicator dots */
+@keyframes pulseDot {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-4px); }
+}
+
+/* Rotating text */
+@keyframes rotateText {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Marquee scroll for long titles — infinite linear, text duplicated so -50% = one full cycle */
+@keyframes marqueeScroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Utility Classes (legacy compat + new)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Legacy animation classes — keep until full Tailwind migration */
 .animate-slideInRight { animation: slideInRight 0.22s ease-out; }
 .animate-fadeUp { animation: fadeUp 0.15s ease; }
 .animate-fadeIn { animation: fadeIn 0.15s ease; }
 .animate-scaleIn { animation: scaleIn 0.18s ease-out; }
 
-/* ─── Typography helpers ─── */
+/* Ripple container */
+.ripple-container {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-container .ripple-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+  animation: rippleExpand 0.6s ease-out forwards;
+}
+
+/* ── Resize handle (react-resizable-panels) ── */
+.resize-handle {
+  width: 3px;
+  flex-shrink: 0;
+  background: transparent;
+  cursor: col-resize;
+  transition: background 0.15s ease;
+  position: relative;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 -2px;
+}
+.resize-handle:hover,
+.resize-handle[data-resize-handle-active] {
+  background: var(--color-accent, #BD6A47);
+  opacity: 0.4;
+}
+.resize-handle[data-resize-handle-active] {
+  opacity: 0.6;
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-border-light) 25%,
+    var(--color-bg-sidebar) 50%,
+    var(--color-border-light) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* Typing indicator */
+.typing-dot {
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* Typography helpers */
 .font-serif { font-family: var(--font-serif); }
 .font-sans { font-family: var(--font-sans); }
 .font-mono { font-family: var(--font-mono); }
+
+/* ═══════════════════════════════════════════════════════════════
+   cmdk — Command Palette styles
+   ═══════════════════════════════════════════════════════════════ */
+[cmdk-overlay] {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 60;
+  animation: fadeIn 0.1s ease;
+}
+[cmdk-dialog] {
+  position: fixed;
+  top: 12vh;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  z-index: 61;
+  width: 620px;
+  max-height: 520px;
+  background: #FFFFFF;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: scaleIn 0.15s ease-out;
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+}
+[cmdk-input] {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  color: #21201C;
+  padding: 16px 0;
+}
+[cmdk-input]::placeholder {
+  color: #B0A99C;
+}
+[cmdk-list] {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+}
+[cmdk-group-heading] {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9A968B;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 20px 4px;
+}
+[cmdk-item] {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px 10px 20px;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  color: #21201C;
+  background: transparent;
+  border-left: 2px solid transparent;
+  transition: background 0.06s;
+  font-size: 13.5px;
+}
+[cmdk-item][data-selected="true"] {
+  background: #F5F3ED;
+  border-left-color: #BD6A47;
+}
+[cmdk-empty] {
+  padding: 40px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+[cmdk-separator] {
+  height: 1px;
+  background: #F0EBE2;
+  margin: 4px 16px;
+}

@@ -1,550 +1,384 @@
-import React, { useMemo, useState } from "react";
-import { useStore, getTypeMeta } from "@/store";
-import type { CaptureOverview } from "@/lib/ipc";
+import React, { useMemo, useState, useCallback } from "react";
+import { useStore } from "@/store";
 
-/* ────── helpers ────── */
+/* ════════════════════════════════════════════════════════════════
+   ContextSidebar — Explorer navigation for Browse mode
+   Clean flat-list design with collapse/expand, "All captures" reset
+   ════════════════════════════════════════════════════════════════ */
 
-interface KBRow {
-  kind: "space" | "tag" | "type" | "project";
-  value: string;
-  label: string;
-  dot: string;
-  count: number;
-}
-
-function buildKBTree(captures: CaptureOverview[]) {
-  const spaces: Record<string, number> = {};
-  const tags: Record<string, number> = {};
-  const types: Record<string, number> = {};
-  const projects: Record<string, number> = {};
-
-  for (const c of captures) {
-    spaces[c.space] = (spaces[c.space] || 0) + 1;
-    types[c.capture_type] = (types[c.capture_type] || 0) + 1;
-    for (const t of c.tags) tags[t] = (tags[t] || 0) + 1;
-    for (const p of c.projects) projects[p] = (projects[p] || 0) + 1;
-  }
-
-  const toRows = (
-    kind: KBRow["kind"],
-    map: Record<string, number>,
-    dotFn: (k: string) => string,
-  ): KBRow[] =>
-    Object.entries(map)
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, v]) => ({
-        kind,
-        value: k,
-        label: k,
-        dot: dotFn(k),
-        count: v,
-      }));
-
-  return {
-    sections: [
-      { heading: "Spaces", rows: toRows("space", spaces, () => "#7C7468") },
-      { heading: "Projects", rows: toRows("project", projects, () => "#6A9389") },
-      { heading: "Types", rows: toRows("type", types, (k) => getTypeMeta(k).dot) },
-    ],
-    tagRows: toRows("tag", tags, () => "#BD6A47"),
-  };
-}
-
-/* ────── component ────── */
+type SectionKey = "spaces" | "projects" | "tags";
+const ALL_SECTIONS: SectionKey[] = ["spaces", "projects", "tags"];
 
 export default function ContextSidebar() {
-  const collapsed = useStore((s) => s.sidebarCollapsed);
-  const toggleSidebar = useStore((s) => s.toggleSidebar);
-  const attached = useStore((s) => s.attached);
-  const bookmarks = useStore((s) => s.bookmarks);
-  const suggested = useStore((s) => s.suggested);
   const captures = useStore((s) => s.captures);
-  const detach = useStore((s) => s.detach);
-  const unbookmark = useStore((s) => s.unbookmark);
-  const attachFromSuggest = useStore((s) => s.attachFromSuggest);
-  const dismissSuggest = useStore((s) => s.dismissSuggest);
-  const openDetail = useStore((s) => s.openDetail);
   const goBrowse = useStore((s) => s.goBrowse);
+  const browseFilter = useStore((s) => s.browseFilter);
+  const selectedTags = useStore((s) => s.selectedTags);
+  const toggleTag = useStore((s) => s.toggleTag);
+  const clearTags = useStore((s) => s.clearTags);
+  const explorerSearch = useStore((s) => s.explorerSearch);
+  const setExplorerSearch = useStore((s) => s.setExplorerSearch);
 
-  const captureMap = useMemo(() => {
-    const m: Record<string, CaptureOverview> = {};
-    for (const c of captures) m[c.id] = c;
-    return m;
-  }, [captures]);
+  // Section expand state
+  const [expanded, setExpanded] = useState<Set<SectionKey>>(
+    new Set(["spaces", "projects"])
+  );
 
-  const kbData = useMemo(() => buildKBTree(captures), [captures]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-
-  const toggleTag = (tag: string) => {
-    setSelectedTags((prev) => {
-      const next = prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag];
-      if (next.length > 0) {
-        goBrowse("tag", next.join(","), `Tags · ${next.join(", ")}`);
-      }
+  const toggle = useCallback((key: SectionKey) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
-  };
+  }, []);
 
-  /* ── collapsed view ── */
-  if (collapsed) {
-    return (
-      <div style={styles.collapsedRoot}>
-        <button
-          onClick={toggleSidebar}
-          title="Context & bookmarks"
-          style={styles.collapsedBtn}
-        >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 14 14"
-            fill="currentColor"
+  const expandAll = useCallback(() => setExpanded(new Set(ALL_SECTIONS)), []);
+  const collapseAll = useCallback(() => setExpanded(new Set()), []);
+
+  // Build explorer data
+  const data = useMemo(() => {
+    const spaces: Record<string, number> = {};
+    const projects: Record<string, number> = {};
+    const tags: Record<string, number> = {};
+
+    for (const c of captures) {
+      spaces[c.space] = (spaces[c.space] || 0) + 1;
+      for (const p of c.projects) projects[p] = (projects[p] || 0) + 1;
+      for (const t of c.tags) tags[t] = (tags[t] || 0) + 1;
+    }
+
+    return {
+      spaces: Object.entries(spaces).sort(([a], [b]) => a.localeCompare(b)),
+      projects: Object.entries(projects).sort(([a], [b]) => a.localeCompare(b)),
+      tags: Object.entries(tags).sort((a, b) => b[1] - a[1]),
+    };
+  }, [captures]);
+
+  const isAllActive = browseFilter.kind === "all";
+  const allExpanded = ALL_SECTIONS.every((s) => expanded.has(s));
+
+  return (
+    <div style={styles.root}>
+      {/* Header row with expand/collapse all */}
+      <div style={styles.header}>
+        <span style={styles.headerLabel}>Explorer</span>
+        <div style={styles.headerActions}>
+          <button
+            onClick={allExpanded ? collapseAll : expandAll}
+            title={allExpanded ? "Collapse all" : "Expand all"}
+            style={styles.headerBtn}
           >
-            <path d="M3.5 2h7v10l-3.5-2.4L3.5 12Z" />
+            {allExpanded ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                <path d="M4 6l4-3 4 3M4 10l4 3 4-3" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                <path d="M4 4l4 3 4-3M4 12l4-3 4 3" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div style={{ padding: "0 10px 6px" }}>
+        <div style={styles.searchWrap}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#B0A99C" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+            <circle cx="7" cy="7" r="4.5" /><line x1="10.2" y1="10.2" x2="14" y2="14" />
           </svg>
-          {(attached.length + bookmarks.length) > 0 && (
-            <span style={styles.badge}>{attached.length + bookmarks.length}</span>
+          <input
+            type="text"
+            placeholder="Search captures…"
+            value={explorerSearch}
+            onChange={(e) => setExplorerSearch(e.target.value)}
+            style={styles.searchInput}
+          />
+          {explorerSearch && (
+            <button onClick={() => setExplorerSearch("")} style={styles.searchClear}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <line x1="2" y1="2" x2="8" y2="8" /><line x1="8" y1="2" x2="2" y2="8" />
+              </svg>
+            </button>
           )}
-        </button>
+        </div>
+      </div>
 
+      {/* All captures button */}
+      <div style={{ padding: "0 10px 8px" }}>
         <button
-          onClick={toggleSidebar}
-          title="Knowledge base"
-          style={styles.collapsedBtn}
+          onClick={() => { goBrowse("all", null, "All captures"); clearTags(); }}
+          style={{
+            ...styles.allBtn,
+            background: isAllActive && selectedTags.length === 0 ? "#FBF3EE" : "transparent",
+            border: `1px solid ${isAllActive && selectedTags.length === 0 ? "#E0C4B5" : "transparent"}`,
+            color: isAllActive && selectedTags.length === 0 ? "#9A4F30" : "#56524A",
+          }}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <rect x="2" y="2.5" width="5" height="5" rx="1" />
-            <rect x="9" y="2.5" width="5" height="5" rx="1" />
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+            <rect x="2" y="2" width="5" height="5" rx="1" />
+            <rect x="9" y="2" width="5" height="5" rx="1" />
             <rect x="2" y="9" width="5" height="5" rx="1" />
             <rect x="9" y="9" width="5" height="5" rx="1" />
           </svg>
+          <span style={{ flex: 1 }}>All captures</span>
+          <span style={styles.countBadge}>{captures.length}</span>
         </button>
-
       </div>
-    );
-  }
 
-  /* ── expanded view ── */
-  return (
-    <div style={styles.expandedRoot}>
-      {/* Bookmarks (persistent) */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <span style={styles.sectionLabel}>Bookmarks</span>
-          <span style={styles.sectionCount}>{bookmarks.length}</span>
-        </div>
-        <div style={styles.chipList}>
-          {bookmarks.length === 0 && (
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 3px",
-            }}>
-              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="#A09A8C" strokeWidth="1.4">
-                <path d="M3.5 2h7v10l-3.5-2.4L3.5 12Z" />
-              </svg>
-              <span style={{ fontSize: 12, color: "#A09A8C" }}>
-                Bookmark captures for quick access
-              </span>
-            </div>
-          )}
-          {bookmarks.map((id) => {
-            const c = captureMap[id];
-            const meta = c ? getTypeMeta(c.capture_type) : getTypeMeta("config");
-            return (
-              <div key={id} style={styles.chip}>
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background: meta.dot,
-                    boxShadow: `0 0 0 3px ${meta.glow}`,
-                  }}
+      {/* Scrollable sections */}
+      <div style={styles.scrollArea}>
+        {/* Spaces */}
+        {data.spaces.length > 0 && (
+          <NavSection
+            title="Spaces"
+            isOpen={expanded.has("spaces")}
+            onToggle={() => toggle("spaces")}
+          >
+            {data.spaces.map(([space, count]) => {
+              const active = browseFilter.kind === "space" && browseFilter.value === space;
+              return (
+                <NavItem
+                  key={space}
+                  label={space}
+                  count={count}
+                  active={active}
+                  icon={<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"><path d="M2 3h3.5l1 1H12v7H2z" /></svg>}
+                  onClick={() => goBrowse("space", space, `Space · ${space}`)}
                 />
-                <span
-                  onClick={() => openDetail(id)}
-                  style={styles.chipTitle}
-                >
-                  {c?.title ?? id}
-                </span>
-                <button onClick={() => unbookmark(id)} style={styles.chipRemove}>
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 12 12"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  >
-                    <line x1="3" y1="3" x2="9" y2="9" />
-                    <line x1="9" y1="3" x2="3" y2="9" />
-                  </svg>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Attached context (per-chat, ephemeral) */}
-      {attached.length > 0 && (
-        <div style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <span style={styles.sectionLabel}>Attached</span>
-            <span style={styles.sectionCount}>{attached.length}</span>
-          </div>
-          <div style={styles.chipList}>
-            {attached.map((id) => {
-              const c = captureMap[id];
-              const meta = c ? getTypeMeta(c.capture_type) : getTypeMeta("config");
-              return (
-                <div key={id} style={styles.chip}>
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      flexShrink: 0,
-                      background: meta.dot,
-                    }}
-                  />
-                  <span
-                    onClick={() => openDetail(id)}
-                    style={styles.chipTitle}
-                  >
-                    {c?.title ?? id}
-                  </span>
-                  <button onClick={() => detach(id)} style={styles.chipRemove}>
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                    >
-                      <line x1="3" y1="3" x2="9" y2="9" />
-                      <line x1="9" y1="3" x2="3" y2="9" />
-                    </svg>
-                  </button>
-                </div>
               );
             })}
-          </div>
-        </div>
-      )}
+          </NavSection>
+        )}
 
-      {/* Auto-suggested */}
-      {suggested.length > 0 && (
-        <div style={styles.section}>
-          <div style={styles.sectionHeader}>
-            <span style={styles.sectionLabel}>Auto-suggested</span>
-          </div>
-          <div style={styles.chipList}>
-            {suggested.map((id) => {
-              const c = captureMap[id];
-              const meta = c
-                ? getTypeMeta(c.capture_type)
-                : getTypeMeta("config");
+        {/* Projects */}
+        {data.projects.length > 0 && (
+          <NavSection
+            title="Projects"
+            isOpen={expanded.has("projects")}
+            onToggle={() => toggle("projects")}
+          >
+            {data.projects.map(([proj, count]) => {
+              const active = browseFilter.kind === "project" && browseFilter.value === proj;
               return (
-                <div key={id} style={styles.suggestChip}>
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      flexShrink: 0,
-                      background: meta.dot,
-                    }}
-                  />
-                  <span
-                    onClick={() => openDetail(id)}
-                    style={styles.suggestTitle}
-                  >
-                    {c?.title ?? id}
-                  </span>
-                  <button
-                    onClick={() => attachFromSuggest(id)}
-                    title="Attach"
-                    style={styles.suggestAction}
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                    >
-                      <line x1="7" y1="2.5" x2="7" y2="11.5" />
-                      <line x1="2.5" y1="7" x2="11.5" y2="7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => dismissSuggest(id)}
-                    title="Dismiss"
-                    style={styles.chipRemove}
-                  >
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                    >
-                      <line x1="3" y1="3" x2="9" y2="9" />
-                      <line x1="9" y1="3" x2="3" y2="9" />
-                    </svg>
-                  </button>
-                </div>
+                <NavItem
+                  key={proj}
+                  label={proj}
+                  count={count}
+                  active={active}
+                  icon={<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"><rect x="2" y="2.5" width="10" height="9" rx="1.5" /><line x1="2" y1="5.5" x2="12" y2="5.5" /></svg>}
+                  onClick={() => goBrowse("project", proj, `Project · ${proj}`)}
+                />
               );
             })}
-          </div>
-        </div>
-      )}
+          </NavSection>
+        )}
 
-      {/* Knowledge Base tree */}
-      <div style={styles.kbSection}>
-        <div style={styles.sectionHeader}>
-          <span style={styles.sectionLabel}>Knowledge base</span>
-        </div>
-
-        {/* Spaces → Projects → Types */}
-        {kbData.sections.map((sec) => (
-          <div key={sec.heading} style={{ marginTop: 10 }}>
-            <div style={styles.kbHeading}>{sec.heading}</div>
-            {sec.rows.map((row) => (
-              <button
-                key={`${row.kind}-${row.value}`}
-                onClick={() => goBrowse(row.kind, row.value, `${sec.heading} · ${row.label}`)}
-                style={styles.kbRow}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: 2, flexShrink: 0, background: row.dot }} />
-                <span style={styles.kbLabel}>{row.label}</span>
-                <span style={styles.kbCount}>{row.count}</span>
-              </button>
-            ))}
-          </div>
-        ))}
-
-        {/* Tags — flex-wrap chips with multi-select */}
-        {kbData.tagRows.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <div style={styles.kbHeading}>Tags</div>
-            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 5, padding: "2px 3px" }}>
-              {kbData.tagRows.map((row) => {
-                const active = selectedTags.includes(row.value);
+        {/* Tags — multi-select */}
+        {data.tags.length > 0 && (
+          <NavSection
+            title="Tags"
+            isOpen={expanded.has("tags")}
+            onToggle={() => toggle("tags")}
+            action={selectedTags.length > 0 ? (
+              <button onClick={clearTags} title="Clear tags" style={{
+                border: "none", background: "transparent", cursor: "pointer",
+                fontSize: 10, color: "#BD6A47", fontWeight: 500, padding: "0 2px",
+                fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+              }}>clear</button>
+            ) : undefined}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "2px 8px 4px" }}>
+              {data.tags.map(([tag, count]) => {
+                const active = selectedTags.includes(tag);
                 return (
                   <button
-                    key={row.value}
-                    onClick={() => toggleTag(row.value)}
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
                     style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      border: active ? "1px solid #CDA18C" : "1px solid #E7E1D6",
-                      background: active ? "#F6E9E1" : "#FBFAF6",
-                      color: active ? "#9A4F30" : "#6B6459",
-                      borderRadius: 7, padding: "4px 9px", fontSize: 11.5,
-                      cursor: "pointer", fontFamily: "ui-monospace, Menlo, monospace",
-                      transition: "all .12s ease",
+                      border: `1px solid ${active ? "#E0C4B5" : "#E9E5DC"}`,
+                      background: active ? "#FBF3EE" : "#F5F2EC",
+                      color: active ? "#9A4F30" : "#5C584E",
+                      borderRadius: 12, padding: "3px 9px",
+                      fontSize: 11, fontWeight: active ? 500 : 400,
+                      cursor: "pointer",
+                      fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+                      transition: "all .12s",
+                      display: "flex", alignItems: "center", gap: 4,
                     }}
                   >
-                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: active ? "#BD6A47" : "#BD6A47", opacity: active ? 1 : 0.5 }} />
-                    {row.label}
-                    <span style={{ fontSize: 10, color: active ? "#BD6A47" : "#B7B1A4", marginLeft: 1 }}>{row.count}</span>
+                    {active && (
+                      <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="#BD6A47" strokeWidth="1.8" strokeLinecap="round">
+                        <polyline points="1.5,5 4,7.5 8.5,2.5" />
+                      </svg>
+                    )}
+                    {tag}
+                    <span style={{ fontSize: 9.5, opacity: 0.6 }}>{count}</span>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </NavSection>
         )}
       </div>
     </div>
   );
 }
 
-/* ────── inline styles ────── */
+/* ── Collapsible section ── */
+function NavSection({ title, isOpen, onToggle, children, action }: {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <button onClick={onToggle} style={{ ...styles.sectionBtn, flex: 1 }}>
+          <svg
+            width="10" height="10" viewBox="0 0 10 10" fill="none"
+            stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+            style={{ flexShrink: 0, transition: "transform .12s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)" }}
+          >
+            <polyline points="3,2 7,5 3,8" />
+          </svg>
+          <span style={styles.sectionTitle}>{title}</span>
+        </button>
+        {action && <span style={{ flexShrink: 0, paddingRight: 6 }}>{action}</span>}
+      </div>
+      {isOpen && <div style={{ paddingBottom: 4 }}>{children}</div>}
+    </div>
+  );
+}
 
+/* ── Single nav item ── */
+function NavItem({ label, count, active, icon, onClick }: {
+  label: string;
+  count: number;
+  active: boolean;
+  icon: React.ReactNode;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex", alignItems: "center", gap: 8,
+        width: "100%", border: "none",
+        background: active ? "#FBF3EE" : (hovered ? "#F5F2EC" : "transparent"),
+        borderRadius: 6, padding: "5px 8px 5px 24px",
+        cursor: "pointer", textAlign: "left",
+        fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+        transition: "background .08s",
+      }}
+    >
+      <span style={{ display: "flex", flexShrink: 0, color: active ? "#9A4F30" : "#7C7468" }}>{icon}</span>
+      <span style={{
+        flex: 1, fontSize: 12.5,
+        color: active ? "#9A4F30" : "#4A463E",
+        fontWeight: active ? 500 : 400,
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        textTransform: "capitalize",
+      }}>
+        {label}
+      </span>
+      <span style={{
+        fontSize: 10,
+        color: active ? "#BD6A47" : "#B7B1A4",
+        fontFamily: "ui-monospace, Menlo, monospace",
+        flexShrink: 0,
+      }}>{count}</span>
+    </button>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Styles
+   ════════════════════════════════════════════════════════════════ */
 const styles: Record<string, React.CSSProperties> = {
-  /* ── collapsed ── */
-  collapsedRoot: {
-    width: 52,
-    flexShrink: 0,
-    background: "#FAF8F3",
+  root: {
+    width: "100%", height: "100%", background: "#FAF8F3",
     borderRight: "1px solid #E9E5DC",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 4,
-    padding: "12px 0",
-    transition: "width .2s ease",
-  },
-  collapsedBtn: {
-    position: "relative" as const,
-    width: 36,
-    height: 36,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border: "none",
-    background: "transparent",
-    color: "#7C7468",
-    borderRadius: 9,
-    cursor: "pointer",
-  },
-  badge: {
-    position: "absolute" as const,
-    top: 3,
-    right: 3,
-    width: 14,
-    height: 14,
-    borderRadius: "50%",
-    background: "#BD6A47",
-    color: "#fff",
-    fontSize: 9,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    display: "flex", flexDirection: "column",
+    boxSizing: "border-box",
   },
 
-  /* ── expanded ── */
-  expandedRoot: {
-    width: 240,
+  header: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "12px 14px 6px",
     flexShrink: 0,
-    background: "#FAF8F3",
-    borderRight: "1px solid #E9E5DC",
-    display: "flex",
-    flexDirection: "column",
-    overflowY: "auto" as const,
-    transition: "width .2s ease",
   },
 
-  /* ── sections ── */
-  section: {
-    padding: "10px 12px 14px",
-  },
-  sectionHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0 3px 8px",
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: ".05em",
-    textTransform: "uppercase" as const,
-    color: "#A09A8C",
-  },
-  sectionCount: {
-    fontSize: 11,
-    color: "#B7B1A4",
+  headerLabel: {
+    fontSize: 11, fontWeight: 600, letterSpacing: ".04em",
+    textTransform: "uppercase" as const, color: "#A09A8C",
   },
 
-  /* ── pinned chips ── */
-  chipList: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 5,
+  headerActions: {
+    display: "flex", alignItems: "center", gap: 2,
   },
-  chip: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    background: "#FFFFFF",
-    border: "1px solid #ECE7DC",
-    borderRadius: 9,
-    padding: "8px 9px",
-  },
-  chipTitle: {
-    flex: 1,
-    fontSize: 13,
-    color: "#3F3B33",
-    whiteSpace: "nowrap" as const,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    cursor: "pointer",
-  },
-  chipRemove: {
-    display: "flex",
-    border: "none",
-    background: "transparent",
-    color: "#BBB5A8",
-    cursor: "pointer",
+
+  headerBtn: {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    width: 26, height: 26, border: "none", background: "transparent",
+    borderRadius: 6, cursor: "pointer", color: "#9A958A",
+    transition: "background .1s",
     padding: 0,
   },
 
-  /* ── suggested chips ── */
-  suggestChip: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    border: "1px solid #ECE7DC",
-    borderRadius: 9,
-    padding: "8px 9px",
-    opacity: 0.78,
-  },
-  suggestTitle: {
-    flex: 1,
-    fontSize: 13,
-    color: "#56524A",
-    whiteSpace: "nowrap" as const,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    cursor: "pointer",
-  },
-  suggestAction: {
-    display: "flex",
-    border: "none",
-    background: "transparent",
-    color: "#A8A096",
-    cursor: "pointer",
-    padding: 0,
+  allBtn: {
+    display: "flex", alignItems: "center", gap: 8,
+    width: "100%", borderRadius: 8, padding: "7px 10px",
+    cursor: "pointer", textAlign: "left" as const,
+    fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+    fontSize: 12.5, fontWeight: 500,
+    transition: "all .12s",
   },
 
-  /* ── KB tree ── */
-  kbSection: {
-    padding: "0 12px 18px",
-  },
-  kbHeading: {
-    fontSize: 11.5,
-    color: "#9A958A",
-    fontWeight: 600,
-    padding: "0 3px 3px",
-  },
-  kbRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 9,
-    width: "100%",
-    border: "none",
-    background: "transparent",
-    borderRadius: 7,
-    padding: "5px 8px",
-    cursor: "pointer",
-    textAlign: "left" as const,
-  },
-  kbLabel: {
-    flex: 1,
-    fontSize: 13,
-    color: "#56524A",
-    whiteSpace: "nowrap" as const,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  kbCount: {
-    fontSize: 11,
-    color: "#B7B1A4",
+  countBadge: {
+    fontSize: 10, fontWeight: 600,
     fontFamily: "ui-monospace, Menlo, monospace",
+    opacity: 0.7,
+  },
+
+  searchWrap: {
+    display: "flex", alignItems: "center", gap: 7,
+    background: "#F5F2EC", border: "1px solid #E9E5DC",
+    borderRadius: 8, padding: "5px 9px",
+  },
+
+  searchInput: {
+    border: "none", outline: "none", background: "transparent",
+    fontSize: 12, color: "#21201C", flex: 1, minWidth: 0,
+    fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+  } as React.CSSProperties,
+
+  searchClear: {
+    display: "flex", border: "none", background: "transparent",
+    color: "#B0A99C", cursor: "pointer", padding: 2,
+  },
+
+  scrollArea: {
+    flex: 1, overflowY: "auto" as const,
+    padding: "4px 10px 16px",
+  },
+
+  sectionBtn: {
+    display: "flex", alignItems: "center", gap: 6,
+    width: "100%", border: "none", background: "transparent",
+    borderRadius: 6, padding: "5px 6px",
+    cursor: "pointer", textAlign: "left" as const,
+    fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+    transition: "background .08s",
+  },
+
+  sectionTitle: {
+    fontSize: 10.5, fontWeight: 600, letterSpacing: ".03em",
+    textTransform: "uppercase" as const, color: "#A09A8C",
   },
 };
