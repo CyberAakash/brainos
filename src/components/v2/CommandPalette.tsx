@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Command } from "cmdk";
-import { useStore, getTypeMeta } from "@/store";
+import { useStore, getColorMeta } from "@/store";
 import type { CaptureOverview } from "@/lib/ipc";
 
 /* ────── Helpers ────── */
@@ -319,7 +319,6 @@ function CaptureItem({ capture, snippet, query, onSelect }: {
   query: string;
   onSelect: (id: string) => void;
 }) {
-  const tm = getTypeMeta(capture.capture_type);
   const hasQuery = query.trim().length > 0;
   const hasSnippet = hasQuery && snippet && snippet.length > 0;
 
@@ -327,22 +326,22 @@ function CaptureItem({ capture, snippet, query, onSelect }: {
     <Command.Item
       value={capture.id}
       onSelect={onSelect}
-      keywords={[capture.title, ...capture.tags, capture.capture_type]}
+      keywords={[capture.title, ...capture.tags]}
       style={{ gap: hasSnippet ? 4 : 0 }}
     >
-      {/* Row 1: dot + title + type badge + time */}
+      {/* Row 1: icon/dot + title + time */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: tm.dot }} />
+        {capture.icon ? (
+          <span style={{ fontSize: 13, lineHeight: 1, flexShrink: 0, width: 16, textAlign: "center" }}>{capture.icon}</span>
+        ) : (
+          <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: getColorMeta(capture.color).dot }} />
+        )}
         <span style={{
           flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           fontWeight: 500,
         }}>
           {hasQuery ? highlightMatches(capture.title, query) : capture.title}
         </span>
-        <span style={{
-          fontSize: 10, fontWeight: 600, borderRadius: 5, padding: "2px 6px", flexShrink: 0,
-          textTransform: "capitalize", letterSpacing: ".02em", background: tm.bg, color: tm.fg,
-        }}>{capture.capture_type}</span>
         {capture.date && (
           <span style={{ fontSize: 11, color: "#A8A194", flexShrink: 0, whiteSpace: "nowrap" }}>
             {relativeTime(capture.date)}

@@ -37,12 +37,14 @@ export interface CaptureOverview {
   id: string;
   title: string;
   summary?: string;
-  space: "work" | "personal";
+  space: "work" | "personal" | "wiki";
   capture_type: string;
   status: CaptureStatus;
   date: string;
   tags: string[];
   projects: string[];
+  color?: string;
+  icon?: string;
 }
 
 export interface Capture extends CaptureOverview {
@@ -68,7 +70,7 @@ export interface SearchResult {
 }
 
 export interface CaptureFilters {
-  space?: "work" | "personal";
+  space?: "work" | "personal" | "wiki";
   capture_type?: string;
   project?: string;
   tags?: string[];
@@ -81,9 +83,18 @@ export interface ChatHistoryItem {
   content: string;
 }
 
+export interface SourceRef {
+  id: string;
+  title: string;
+  space: string;
+  capture_type: string;
+  tags: string[];
+}
+
 export interface ChatResponse {
   text: string;
   source_ids: string[];
+  sources: SourceRef[];
 }
 
 export interface ProviderConfig {
@@ -94,9 +105,9 @@ export interface ProviderConfig {
 }
 
 export interface AppSettings {
-  general: { kb_root: string; display_name: string };
+  general: { kb_root: string; display_name: string; auto_index: boolean };
   chat: { active: string; providers: Record<string, ProviderConfig> };
-  ui: { theme: string; sidebar_width: number };
+  ui: { theme: string; sidebar_width: number; compact_mode: boolean };
 }
 
 // ── Create capture options ───────────────────────────────────
@@ -107,6 +118,8 @@ export interface CreateCaptureOpts {
   projectName?: string;
   projectPath?: string;
   chainPrev?: string;
+  color?: string;
+  icon?: string;
 }
 
 // ── API ──────────────────────────────────────────────────────
@@ -152,6 +165,9 @@ export const api = {
 
   saveSettings: (active: string, providers: Record<string, ProviderConfig>) =>
     invoke<void>("save_settings", { active, providers }),
+
+  saveGeneralSettings: (opts: { displayName?: string; autoIndex?: boolean; compactMode?: boolean }) =>
+    invoke<void>("save_general_settings", opts),
 
   chatSend: (message: string, pinnedIds: string[], history: ChatHistoryItem[]) =>
     invoke<ChatResponse>("chat_send", { message, pinnedIds, history }),

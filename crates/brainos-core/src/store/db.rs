@@ -118,6 +118,16 @@ impl Store {
             }
         }
 
+        // v2.1 migration: color & icon columns for captures
+        {
+            let has_color: bool = self.conn.prepare("SELECT color FROM captures LIMIT 0").is_ok();
+            if !has_color {
+                info!("Adding color & icon columns...");
+                self.conn.execute("ALTER TABLE captures ADD COLUMN color TEXT", []).ok();
+                self.conn.execute("ALTER TABLE captures ADD COLUMN icon TEXT", []).ok();
+            }
+        }
+
         // v3 migration: vector embeddings table (sqlite-vec)
         self.conn.execute_batch(include_str!("migrations/003_vectors.sql"))?;
 

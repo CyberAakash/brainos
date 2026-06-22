@@ -72,6 +72,8 @@ pub fn create_capture_file(
     project_name: Option<String>,
     project_path: Option<String>,
     chain_prev: Option<String>,
+    color: Option<String>,
+    icon: Option<String>,
 ) -> Result<Capture, String> {
     let store = store.0.lock().map_err(|e| e.to_string())?;
     let opts = brainos_core::files::CreateCaptureOpts {
@@ -80,6 +82,8 @@ pub fn create_capture_file(
         project_name,
         project_path,
         chain_prev,
+        color,
+        icon,
     };
     let capture = brainos_core::files::create_file(&store, &config.0.general.kb_root, &title, &space, &capture_type, &tags, &body, Some(&opts))
         .map_err(|e| e.to_string())?;
@@ -244,6 +248,26 @@ pub fn save_settings(
     Ok(())
 }
 
+#[command]
+pub fn save_general_settings(
+    display_name: Option<String>,
+    auto_index: Option<bool>,
+    compact_mode: Option<bool>,
+) -> Result<(), String> {
+    let mut cfg = Config::load().map_err(|e| e.to_string())?;
+    if let Some(name) = display_name {
+        cfg.general.display_name = name;
+    }
+    if let Some(ai) = auto_index {
+        cfg.general.auto_index = ai;
+    }
+    if let Some(cm) = compact_mode {
+        cfg.ui.compact_mode = cm;
+    }
+    cfg.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── Entities (Phase 2) ─────────────────────────────────────
 
 #[command]
@@ -277,6 +301,8 @@ pub fn get_captures_for_entity(
                 date: c.date,
                 tags: c.tags,
                 projects: c.projects,
+                color: c.color,
+                icon: c.icon,
             });
         }
     }

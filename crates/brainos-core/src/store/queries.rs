@@ -23,8 +23,9 @@ impl Store {
         self.conn().execute(
             "INSERT INTO captures (id, file_path, file_hash, title, summary, space, type, status, date,
                 confidence, repo, workspace, session_tool, body_text,
-                project_name, project_path, git_json, chain_prev, chain_refs_json, links_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+                project_name, project_path, git_json, chain_prev, chain_refs_json, links_json,
+                color, icon)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
              ON CONFLICT(id) DO UPDATE SET
                 file_path=excluded.file_path, file_hash=excluded.file_hash, title=excluded.title,
                 summary=excluded.summary, space=excluded.space, type=excluded.type, status=excluded.status,
@@ -33,7 +34,8 @@ impl Store {
                 body_text=excluded.body_text, project_name=excluded.project_name,
                 project_path=excluded.project_path, git_json=excluded.git_json,
                 chain_prev=excluded.chain_prev, chain_refs_json=excluded.chain_refs_json,
-                links_json=excluded.links_json, updated_at=datetime('now')",
+                links_json=excluded.links_json, color=excluded.color, icon=excluded.icon,
+                updated_at=datetime('now')",
             params![
                 capture.id,                         // ?1
                 capture.file_path,                  // ?2
@@ -55,6 +57,8 @@ impl Store {
                 chain_prev,                         // ?18
                 chain_refs_json,                    // ?19
                 links_json,                         // ?20
+                &capture.color,                     // ?21
+                &capture.icon,                      // ?22
             ],
         )?;
 
@@ -135,7 +139,8 @@ impl Store {
         let mut stmt = self.conn().prepare(
             "SELECT id, file_path, file_hash, title, summary, space, type, status, date,
                     confidence, repo, workspace, session_tool, body_text,
-                    project_name, project_path, git_json, chain_prev, chain_refs_json, links_json
+                    project_name, project_path, git_json, chain_prev, chain_refs_json, links_json,
+                    color, icon
              FROM captures WHERE id = ?1"
         )?;
 
@@ -161,6 +166,8 @@ impl Store {
                 chain_prev: row.get(17)?,
                 chain_refs_json: row.get(18)?,
                 links_json: row.get(19)?,
+                color: row.get(20)?,
+                icon: row.get(21)?,
             })
         }).optional()?;
 
@@ -222,6 +229,8 @@ impl Store {
                     chain,
                     links,
                     body_text: row.body_text,
+                    color: row.color,
+                    icon: row.icon,
                 }))
             }
             None => Ok(None),
@@ -230,7 +239,7 @@ impl Store {
 
     pub fn list_captures(&self, filters: &CaptureFilters, limit: u32, offset: u32) -> Result<Vec<CaptureOverview>> {
         let mut sql = String::from(
-            "SELECT c.id, c.title, c.summary, c.space, c.type, c.status, c.date FROM captures c WHERE 1=1"
+            "SELECT c.id, c.title, c.summary, c.space, c.type, c.status, c.date, c.color, c.icon FROM captures c WHERE 1=1"
         );
         let mut bind_values: Vec<String> = Vec::new();
 
@@ -265,6 +274,8 @@ impl Store {
                 capture_type: row.get(4)?,
                 status: row.get(5)?,
                 date: row.get(6)?,
+                color: row.get(7)?,
+                icon: row.get(8)?,
             })
         })?;
 
@@ -288,6 +299,8 @@ impl Store {
                 date: row.date.parse().unwrap_or(chrono::NaiveDate::MIN),
                 tags,
                 projects,
+                color: row.color,
+                icon: row.icon,
             });
         }
         Ok(captures)
@@ -488,6 +501,8 @@ struct CaptureRow {
     chain_prev: Option<String>,
     chain_refs_json: Option<String>,
     links_json: Option<String>,
+    color: Option<String>,
+    icon: Option<String>,
 }
 
 struct CaptureOverviewRow {
@@ -498,4 +513,6 @@ struct CaptureOverviewRow {
     capture_type: String,
     status: Option<String>,
     date: String,
+    color: Option<String>,
+    icon: Option<String>,
 }

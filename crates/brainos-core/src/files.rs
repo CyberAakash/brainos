@@ -32,6 +32,8 @@ pub struct CreateCaptureOpts {
     pub project_name: Option<String>,
     pub project_path: Option<String>,
     pub chain_prev: Option<String>,
+    pub color: Option<String>,
+    pub icon: Option<String>,
 }
 
 /// Create a new capture file with frontmatter template, index it, return the Capture
@@ -82,6 +84,12 @@ pub fn create_file(
         if let Some(ref prev) = opts.chain_prev {
             extra_fm.push_str("chain:\n");
             extra_fm.push_str(&format!("  prev: \"{}\"\n", prev));
+        }
+        if let Some(ref color) = opts.color {
+            extra_fm.push_str(&format!("color: \"{}\"\n", color));
+        }
+        if let Some(ref icon) = opts.icon {
+            extra_fm.push_str(&format!("icon: \"{}\"\n", icon));
         }
     }
 

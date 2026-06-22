@@ -225,6 +225,100 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   Chat Markdown Rendering
+   ═══════════════════════════════════════════════════════════════════ */
+.chat-markdown {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #3F3B33;
+}
+.chat-markdown p { margin: 0 0 10px; }
+.chat-markdown p:last-child { margin-bottom: 0; }
+.chat-markdown strong { font-weight: 600; color: #2B2823; }
+.chat-markdown em { font-style: italic; }
+.chat-markdown code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  background: #F2EDE3;
+  border: 1px solid #E9E5DC;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.chat-markdown pre {
+  background: #2B2823;
+  color: #E8E4D9;
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.chat-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+.chat-markdown ul, .chat-markdown ol {
+  margin: 6px 0 10px;
+  padding-left: 22px;
+}
+.chat-markdown li { margin: 3px 0; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 {
+  font-family: 'Newsreader', Georgia, serif;
+  color: #21201C;
+  margin: 16px 0 6px;
+}
+.chat-markdown h1 { font-size: 20px; }
+.chat-markdown h2 { font-size: 17px; }
+.chat-markdown h3 { font-size: 15px; font-weight: 600; }
+.chat-markdown blockquote {
+  border-left: 3px solid #E0C4B5;
+  padding-left: 14px;
+  margin: 8px 0;
+  color: #7C7468;
+  font-style: italic;
+}
+.chat-markdown a {
+  color: #BD6A47;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-markdown hr {
+  border: none;
+  border-top: 1px solid #E9E5DC;
+  margin: 12px 0;
+}
+
+/* Citation badges */
+.cite-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  border: 1px solid #E0C4B5;
+  background: #FBF3EE;
+  color: #9A4F30;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  vertical-align: middle;
+  margin: 0 1.5px;
+  font-family: ui-monospace, Menlo, monospace;
+  transition: all .1s;
+  line-height: 1;
+  padding: 0;
+}
+.cite-badge:hover {
+  background: #F3E1D4;
+  border-color: #BD6A47;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    Utility Classes (legacy compat + new)
    ═══════════════════════════════════════════════════════════════════ */
 

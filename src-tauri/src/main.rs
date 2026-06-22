@@ -75,6 +75,7 @@ fn main() {
             commands::delete_capture_file,
             commands::chat_send,
             commands::save_settings,
+            commands::save_general_settings,
             commands::test_provider,
             commands::detect_claude_cli,
             commands::detect_git_info,

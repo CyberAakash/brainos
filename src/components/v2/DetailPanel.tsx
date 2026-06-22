@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useStore } from "@/store";
+import { useEffect, useState, useRef } from "react";
+import { useStore, getColorMeta, CAPTURE_COLORS, CAPTURE_ICONS } from "@/store";
 import { api } from "@/lib/ipc";
 import type { Capture, CaptureStatus } from "@/lib/ipc";
 import CanvasMarkdown from "./CanvasMarkdown";
@@ -54,6 +54,51 @@ function TBtn({ title, onClick, children, active, style: extra }: {
   );
 }
 
+/* ── Build frontmatter string from capture ── */
+function buildFrontmatter(cap: Capture, tags: string[]): string {
+  const fmLines = [
+    "---",
+    `id: "${cap.id}"`,
+    `title: "${cap.title.replace(/"/g, '\\"')}"`,
+    `space: ${cap.space}`,
+    `type: ${cap.capture_type}`,
+    `status: ${cap.status}`,
+    `date: "${cap.date}"`,
+  ];
+  if (cap.summary) fmLines.push(`summary: "${cap.summary.replace(/"/g, '\\"')}"`);
+  if (cap.project_info) {
+    fmLines.push("project:");
+    fmLines.push(`  name: "${cap.project_info.name}"`);
+    if (cap.project_info.path) fmLines.push(`  path: "${cap.project_info.path}"`);
+  }
+  if (cap.git_info) {
+    fmLines.push("git:");
+    if (cap.git_info.repo) fmLines.push(`  repo: "${cap.git_info.repo}"`);
+    if (cap.git_info.branch) fmLines.push(`  branch: "${cap.git_info.branch}"`);
+    if (cap.git_info.remote) fmLines.push(`  remote: "${cap.git_info.remote}"`);
+  }
+  if (cap.chain) {
+    fmLines.push("chain:");
+    if (cap.chain.prev) fmLines.push(`  prev: "${cap.chain.prev}"`);
+    if (cap.chain.refs.length > 0) fmLines.push(`  refs: [${cap.chain.refs.map((r) => `"${r}"`).join(", ")}]`);
+  }
+  if (cap.links && cap.links.length > 0) {
+    fmLines.push("links:");
+    for (const link of cap.links) {
+      fmLines.push(`  - url: "${link.url}"`);
+      if (link.label) fmLines.push(`    label: "${link.label}"`);
+    }
+  }
+  fmLines.push(`tags: [${tags.map((t) => `"${t}"`).join(", ")}]`);
+  if (cap.projects.length > 0) fmLines.push(`projects: [${cap.projects.map((p) => `"${p}"`).join(", ")}]`);
+  if (cap.related.length > 0) fmLines.push(`related: [${cap.related.map((r) => `"${r}"`).join(", ")}]`);
+  if (cap.files.length > 0) fmLines.push(`files: [${cap.files.map((f) => `"${f}"`).join(", ")}]`);
+  if (cap.color) fmLines.push(`color: "${cap.color}"`);
+  if (cap.icon) fmLines.push(`icon: "${cap.icon}"`);
+  fmLines.push("---", "");
+  return fmLines.join("\n");
+}
+
 /* ════════════════════════════════════════════════════════════ */
 
 export default function DetailPanel() {
@@ -80,6 +125,11 @@ export default function DetailPanel() {
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [customEmojiInput, setCustomEmojiInput] = useState("");
+  const colorPickerRef = useRef<HTMLDivElement>(null);
+  const iconPickerRef = useRef<HTMLDivElement>(null);
 
   // Load capture data
   useEffect(() => {
@@ -97,8 +147,35 @@ export default function DetailPanel() {
     setCopied(false);
     setShowDeleteConfirm(false);
     setFullscreen(false);
+    setShowColorPicker(false);
+    setShowIconPicker(false);
   }, [selectedId]);
 
+  // Click outside to close popovers
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (showColorPicker && colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
+        setShowColorPicker(false);
+      }
+      if (showIconPicker && iconPickerRef.current && !iconPickerRef.current.contains(e.target as Node)) {
+        setShowIconPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showColorPicker, showIconPicker]);
+
+  /* ── Sync saved capture back to store so cache + browse list reflect changes ── */
+  const syncToStore = (saved: Capture) => {
+    useStore.setState((s) => ({
+      captureCache: { ...s.captureCache, [saved.id]: saved },
+      captures: s.captures.map((c) =>
+        c.id === saved.id
+          ? { ...c, title: saved.title, summary: saved.summary, tags: saved.tags, status: saved.status, color: saved.color, icon: saved.icon }
+          : c
+      ),
+    }));
+  };
 
   if (!detailOpen) return null;
 
@@ -115,48 +192,12 @@ export default function DetailPanel() {
   const handleSave = async () => {
     if (!capture) return;
     try {
-      // Rebuild full markdown with frontmatter (including v2 fields)
-      const fmLines = [
-        "---",
-        `id: "${capture.id}"`,
-        `title: "${editTitle.replace(/"/g, '\\"')}"`,
-        `type: ${capture.capture_type}`,
-        `space: ${capture.space}`,
-        `status: ${capture.status}`,
-        `date: ${capture.date}`,
-      ];
-      if (capture.summary) fmLines.push(`summary: "${capture.summary.replace(/"/g, '\\"')}"`);
-      if (capture.project_info) {
-        fmLines.push("project:");
-        fmLines.push(`  name: "${capture.project_info.name}"`);
-        if (capture.project_info.path) fmLines.push(`  path: "${capture.project_info.path}"`);
-      }
-      if (capture.git_info) {
-        fmLines.push("git:");
-        if (capture.git_info.repo) fmLines.push(`  repo: "${capture.git_info.repo}"`);
-        if (capture.git_info.branch) fmLines.push(`  branch: "${capture.git_info.branch}"`);
-        if (capture.git_info.remote) fmLines.push(`  remote: "${capture.git_info.remote}"`);
-      }
-      if (capture.chain) {
-        fmLines.push("chain:");
-        if (capture.chain.prev) fmLines.push(`  prev: "${capture.chain.prev}"`);
-        if (capture.chain.refs.length > 0) fmLines.push(`  refs: [${capture.chain.refs.map((r) => `"${r}"`).join(", ")}]`);
-      }
-      if (capture.links && capture.links.length > 0) {
-        fmLines.push("links:");
-        for (const link of capture.links) {
-          fmLines.push(`  - url: "${link.url}"`);
-          if (link.label) fmLines.push(`    label: "${link.label}"`);
-        }
-      }
-      fmLines.push(`tags: [${editTags.map((t) => `"${t}"`).join(", ")}]`);
-      if (capture.projects.length > 0) fmLines.push(`projects: [${capture.projects.map((p) => `"${p}"`).join(", ")}]`);
-      if (capture.related.length > 0) fmLines.push(`related: [${capture.related.map((r) => `"${r}"`).join(", ")}]`);
-      if (capture.files.length > 0) fmLines.push(`files: [${capture.files.map((f) => `"${f}"`).join(", ")}]`);
-      fmLines.push("---", "");
-      const fullContent = fmLines.join("\n") + editBody;
-      const updated = await api.saveCaptureContent(capture.id, fullContent);
-      setCapture(updated);
+      const withEdits = { ...capture, title: editTitle };
+      const fm = buildFrontmatter(withEdits, editTags);
+      const fullContent = fm + editBody;
+      const saved = await api.saveCaptureContent(capture.id, fullContent);
+      setCapture(saved);
+      syncToStore(saved);
       setTab("preview");
       showToast("Changes saved");
     } catch { showToast("Save failed"); }
@@ -166,6 +207,23 @@ export default function DetailPanel() {
     if (!capture) return;
     attach(capture.id);
     showToast("Attached to chat context");
+  };
+
+  /* ── Save a single field change (color/icon) without entering edit mode ── */
+  const saveFieldChange = async (field: "color" | "icon", value: string) => {
+    if (!capture) return;
+    const updated = { ...capture, [field]: value };
+    setCapture(updated);
+    try {
+      const fm = buildFrontmatter(updated, capture.tags);
+      const fullContent = fm + updated.body_text;
+      const saved = await api.saveCaptureContent(capture.id, fullContent);
+      setCapture(saved);
+      syncToStore(saved);
+    } catch {
+      setCapture(capture); // revert
+      showToast(`Failed to update ${field}`);
+    }
   };
 
   const isFav = capture ? favorites.includes(capture.id) : false;
@@ -267,12 +325,12 @@ export default function DetailPanel() {
   /* ── Meta section (shown in preview tab) ── */
   const metaSection = capture && (
     <div style={{ padding: "20px 20px 0" }}>
-      {/* Title — read-only in preview */}
+      {/* Title — read-only in preview, fully visible */}
       <div style={{
         fontFamily: "'Newsreader',Georgia,serif", fontSize: fullscreen ? 26 : 23,
         fontWeight: 500, lineHeight: 1.25, color: "#21201C",
         padding: "2px 0",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        wordBreak: "break-word",
       }}>
         {capture.title}
       </div>
@@ -284,8 +342,95 @@ export default function DetailPanel() {
         </div>
       )}
 
-      {/* Badges — space, status, date (type removed) */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+      {/* Badges — icon, color, space, status, date */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14, position: "relative" }}>
+        {/* Icon badge — click to open emoji picker */}
+        <div style={{ position: "relative" }} ref={iconPickerRef}>
+          <span
+            title="Change icon"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", padding: "2px 6px", borderRadius: 7, background: showIconPicker ? "#EFEAE0" : "transparent", minWidth: 28, height: 28 }}
+            onClick={() => { setShowIconPicker(!showIconPicker); setShowColorPicker(false); setCustomEmojiInput(""); }}
+          >{capture.icon || "🏷️"}</span>
+          {showIconPicker && (
+            <div style={{
+              position: "absolute", top: 34, left: 0, zIndex: 90, background: "#FFFFFF",
+              border: "1px solid #E7E1D6", borderRadius: 10, padding: 8, boxShadow: "0 4px 16px rgba(0,0,0,.12)",
+              minWidth: 170, maxWidth: 220,
+            }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 2, marginBottom: 6 }}>
+                {CAPTURE_ICONS.map((emoji) => (
+                  <button key={emoji} onClick={() => { saveFieldChange("icon", emoji); setShowIconPicker(false); }}
+                    style={{
+                      width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+                      border: capture.icon === emoji ? "2px solid #BD6A47" : "1px solid transparent",
+                      background: capture.icon === emoji ? "#FDF5F0" : "transparent",
+                      borderRadius: 7, cursor: "pointer", fontSize: 17, padding: 0,
+                    }}
+                  >{emoji}</button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <input
+                  value={customEmojiInput}
+                  onChange={(e) => setCustomEmojiInput(e.target.value)}
+                  placeholder="Custom…"
+                  style={{ flex: 1, minWidth: 0, border: "1px solid #E7E1D6", borderRadius: 6, padding: "4px 8px", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && customEmojiInput.trim()) {
+                      saveFieldChange("icon", customEmojiInput.trim());
+                      setShowIconPicker(false);
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => { if (customEmojiInput.trim()) { saveFieldChange("icon", customEmojiInput.trim()); setShowIconPicker(false); } }}
+                  style={{ border: "none", background: "#BD6A47", color: "#fff", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                >Set</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Color dot — click to open color palette */}
+        <div style={{ position: "relative" }} ref={colorPickerRef}>
+          <span
+            title="Change color"
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 28, height: 28, borderRadius: 7, cursor: "pointer",
+              background: showColorPicker ? "#EFEAE0" : getColorMeta(capture.color).bg,
+              border: `2px solid ${getColorMeta(capture.color).dot}`,
+            }}
+            onClick={() => { setShowColorPicker(!showColorPicker); setShowIconPicker(false); }}
+          >
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: getColorMeta(capture.color).dot }} />
+          </span>
+          {showColorPicker && (
+            <div style={{
+              position: "absolute", top: 34, left: 0, zIndex: 90, background: "#FFFFFF",
+              border: "1px solid #E7E1D6", borderRadius: 10, padding: 8, boxShadow: "0 4px 16px rgba(0,0,0,.12)",
+              display: "flex", gap: 6, flexWrap: "wrap", width: 180,
+            }}>
+              {CAPTURE_COLORS.map((c) => (
+                <button key={c.key} title={c.key}
+                  onClick={() => { saveFieldChange("color", c.key); setShowColorPicker(false); }}
+                  style={{
+                    width: 32, height: 32, borderRadius: 8, cursor: "pointer",
+                    background: c.bg,
+                    border: capture.color === c.key ? `2.5px solid ${c.dot}` : "2px solid transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "transform 0.1s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.15)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+                >
+                  <span style={{ width: 12, height: 12, borderRadius: "50%", background: c.dot }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <span style={{ display: "inline-flex", alignItems: "center", border: "1px solid #E7E1D6", background: "#FBFAF6", borderRadius: 7, padding: "5px 10px", fontSize: "12.5px", color: "#56524A" }}>{capture.space}</span>
         <span style={{ display: "inline-flex", alignItems: "center", background: statusColors[capture.status]?.bg ?? "#F2EDE3", borderRadius: 7, padding: "5px 10px", fontSize: "12.5px", fontWeight: 500, color: statusColors[capture.status]?.fg ?? "#8C887E" }}>{capture.status}</span>
         <span style={{ display: "inline-flex", alignItems: "center", background: "#F2EDE3", borderRadius: 7, padding: "5px 10px", fontSize: "12.5px", color: "#8C887E" }}>{capture.date}</span>

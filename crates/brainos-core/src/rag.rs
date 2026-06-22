@@ -22,17 +22,29 @@ pub struct ChatHistoryItem {
     pub content: String,
 }
 
+/// Metadata for a source capture referenced in a chat response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceRef {
+    pub id: String,
+    pub title: String,
+    pub space: String,
+    pub capture_type: String,
+    pub tags: Vec<String>,
+}
+
 /// Output from a RAG chat turn.
 #[derive(Debug, Clone, Serialize)]
 pub struct ChatResponse {
     pub text: String,
     pub source_ids: Vec<String>,
+    pub sources: Vec<SourceRef>,
 }
 
 /// Intermediate result from context building (sync, needs Store).
 pub struct RagContext {
     pub messages: Vec<LlmMessage>,
     pub source_ids: Vec<String>,
+    pub sources: Vec<SourceRef>,
 }
 
 const MAX_CONTEXT_CHARS: usize = 12_000;
@@ -45,17 +57,25 @@ const MAX_CHAIN_DEPTH: usize = 3;
 /// Otherwise falls back to BM25-only keyword search.
 pub fn build_context(store: &Store, request: &ChatRequest, embedder: Option<&Embedder>) -> Result<RagContext> {
     let mut source_ids: Vec<String> = Vec::new();
+    let mut sources: Vec<SourceRef> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     let mut context_parts: Vec<String> = Vec::new();
     let mut total_chars: usize = 0;
 
     // Helper: add a capture to context (with optional chain walk)
-    let add_capture = |capture: &Capture, seen: &mut HashSet<String>, source_ids: &mut Vec<String>, context_parts: &mut Vec<String>, total_chars: &mut usize| {
+    let add_capture = |capture: &Capture, seen: &mut HashSet<String>, source_ids: &mut Vec<String>, sources: &mut Vec<SourceRef>, context_parts: &mut Vec<String>, total_chars: &mut usize| {
         let block = format_capture_context(capture);
         if *total_chars + block.len() > MAX_CONTEXT_CHARS { return false; }
         *total_chars += block.len();
         context_parts.push(block);
         source_ids.push(capture.id.clone());
+        sources.push(SourceRef {
+            id: capture.id.clone(),
+            title: capture.title.clone(),
+            space: capture.space.to_string(),
+            capture_type: capture.capture_type.clone(),
+            tags: capture.tags.clone(),
+        });
         seen.insert(capture.id.clone());
         true
     };
@@ -64,9 +84,9 @@ pub fn build_context(store: &Store, request: &ChatRequest, embedder: Option<&Emb
     for id in &request.pinned_ids {
         if seen.contains(id) { continue; }
         if let Some(capture) = store.get_capture(id)? {
-            if !add_capture(&capture, &mut seen, &mut source_ids, &mut context_parts, &mut total_chars) { break; }
+            if !add_capture(&capture, &mut seen, &mut source_ids, &mut sources, &mut context_parts, &mut total_chars) { break; }
             // Walk chain backwards
-            walk_chain(store, &capture, MAX_CHAIN_DEPTH, &mut seen, &mut source_ids, &mut context_parts, &mut total_chars);
+            walk_chain(store, &capture, MAX_CHAIN_DEPTH, &mut seen, &mut source_ids, &mut sources, &mut context_parts, &mut total_chars);
         }
     }
 
@@ -77,8 +97,8 @@ pub fn build_context(store: &Store, request: &ChatRequest, embedder: Option<&Emb
         let id = &sr.capture.id;
         if seen.contains(id) { continue; }
         if let Some(capture) = store.get_capture(id)? {
-            if !add_capture(&capture, &mut seen, &mut source_ids, &mut context_parts, &mut total_chars) { break; }
-            walk_chain(store, &capture, MAX_CHAIN_DEPTH, &mut seen, &mut source_ids, &mut context_parts, &mut total_chars);
+            if !add_capture(&capture, &mut seen, &mut source_ids, &mut sources, &mut context_parts, &mut total_chars) { break; }
+            walk_chain(store, &capture, MAX_CHAIN_DEPTH, &mut seen, &mut source_ids, &mut sources, &mut context_parts, &mut total_chars);
         }
     }
 
@@ -104,7 +124,7 @@ pub fn build_context(store: &Store, request: &ChatRequest, embedder: Option<&Emb
         content: request.message.clone(),
     });
 
-    Ok(RagContext { messages, source_ids })
+    Ok(RagContext { messages, source_ids, sources })
 }
 
 /// Walk chain.prev backwards up to `depth` captures, adding each as context.
@@ -114,6 +134,7 @@ fn walk_chain(
     depth: usize,
     seen: &mut HashSet<String>,
     source_ids: &mut Vec<String>,
+    sources: &mut Vec<SourceRef>,
     context_parts: &mut Vec<String>,
     total_chars: &mut usize,
 ) {
@@ -131,6 +152,13 @@ fn walk_chain(
                 *total_chars += block.len();
                 context_parts.push(block);
                 source_ids.push(prev_capture.id.clone());
+                sources.push(SourceRef {
+                    id: prev_capture.id.clone(),
+                    title: prev_capture.title.clone(),
+                    space: prev_capture.space.to_string(),
+                    capture_type: prev_capture.capture_type.clone(),
+                    tags: prev_capture.tags.clone(),
+                });
                 seen.insert(prev_capture.id.clone());
                 current = prev_capture.chain.as_ref().and_then(|c| c.prev.clone());
             }
@@ -146,6 +174,7 @@ pub async fn call_llm(config: &ChatConfig, context: RagContext) -> Result<ChatRe
     Ok(ChatResponse {
         text: response.text,
         source_ids: context.source_ids,
+        sources: context.sources,
     })
 }
 
@@ -166,7 +195,9 @@ fn build_system_prompt(context_parts: &[String]) -> String {
             prompt.push_str(&format!("### Source {}\n{}\n\n", i + 1, part));
         }
         prompt.push_str("---\n\nUse the above context to answer the user's question. \
-                         Reference specific sources by their title when citing information.\n");
+                         When citing information from a source, use numbered references like [1], [2], etc. \
+                         matching the source numbers above. You may cite multiple sources in a single statement [1][3]. \
+                         Only cite sources you actually use.\n");
     }
 
     prompt

@@ -1,22 +1,35 @@
 import { create } from "zustand";
 import { toast } from "sonner";
-import { api, type Capture, type CaptureOverview, type SearchResult, type CreateCaptureOpts } from "./lib/ipc";
+import { api, type Capture, type CaptureOverview, type SearchResult, type CreateCaptureOpts, type SourceRef } from "./lib/ipc";
 
-// ─── Type metadata ───
-export const TYPE_META: Record<string, { bg: string; fg: string; dot: string; glow: string }> = {
-  learning:     { bg: '#E4EBE0', fg: '#4A6048', dot: '#7E9A6F', glow: 'rgba(126,154,111,.18)' },
-  debugging:    { bg: '#F0E0DA', fg: '#8A4A38', dot: '#B5694F', glow: 'rgba(181,105,79,.18)' },
-  fix:          { bg: '#F2E8D4', fg: '#7E6326', dot: '#B89248', glow: 'rgba(184,146,72,.18)' },
-  insight:      { bg: '#F2ECD2', fg: '#756321', dot: '#B79C3F', glow: 'rgba(183,156,63,.18)' },
-  decision:     { bg: '#DFE6EE', fg: '#3F5572', dot: '#6E89AB', glow: 'rgba(110,137,171,.18)' },
-  architecture: { bg: '#E9E1EC', fg: '#614A6E', dot: '#927AA0', glow: 'rgba(146,122,160,.18)' },
-  pattern:      { bg: '#DDEAE7', fg: '#3A5F58', dot: '#6A9389', glow: 'rgba(106,147,137,.18)' },
-  config:       { bg: '#E8E5DD', fg: '#5C584E', dot: '#908A7C', glow: 'rgba(144,138,124,.18)' },
-  reference:    { bg: '#DCE9E9', fg: '#36605F', dot: '#689592', glow: 'rgba(104,149,146,.18)' },
-};
+// ─── Capture color palette (fixed set for classification) ───
+export const CAPTURE_COLORS: { key: string; bg: string; fg: string; dot: string }[] = [
+  { key: "sage",      bg: "#E4EBE0", fg: "#4A6048", dot: "#7E9A6F" },
+  { key: "terracotta", bg: "#F0E0DA", fg: "#8A4A38", dot: "#B5694F" },
+  { key: "sand",      bg: "#F2E8D4", fg: "#7E6326", dot: "#B89248" },
+  { key: "ocean",     bg: "#DFE6EE", fg: "#3F5572", dot: "#6E89AB" },
+  { key: "lavender",  bg: "#E9E1EC", fg: "#614A6E", dot: "#927AA0" },
+  { key: "mint",      bg: "#DDEAE7", fg: "#3A5F58", dot: "#6A9389" },
+  { key: "stone",     bg: "#E8E5DD", fg: "#5C584E", dot: "#908A7C" },
+  { key: "teal",      bg: "#DCE9E9", fg: "#36605F", dot: "#689592" },
+];
 
-export function getTypeMeta(t: string) {
-  return TYPE_META[t] || TYPE_META.config;
+export function getColorMeta(key?: string | null) {
+  if (!key) return CAPTURE_COLORS[6]; // stone fallback
+  return CAPTURE_COLORS.find((c) => c.key === key) || CAPTURE_COLORS[6];
+}
+
+export function randomColorKey(): string {
+  return CAPTURE_COLORS[Math.floor(Math.random() * CAPTURE_COLORS.length)].key;
+}
+
+// ─── Capture icon set (random assignment, user can edit to any emoji) ───
+export const CAPTURE_ICONS: string[] = [
+  "📝", "💡", "🔧", "📌", "🧩", "🎯", "📎", "🗂️", "⚡", "🔍", "📚", "🧠",
+];
+
+export function randomIcon(): string {
+  return CAPTURE_ICONS[Math.floor(Math.random() * CAPTURE_ICONS.length)];
 }
 
 // ─── Types ───
@@ -36,6 +49,7 @@ export interface ChatMessage {
   text: string;
   sources?: number;
   cardIds?: string[];
+  sourceRefs?: SourceRef[];
 }
 
 export interface Conversation {
@@ -127,6 +141,7 @@ interface AppState {
   unarchiveSelectedConvos: () => void;
   deleteSelectedConvos: () => void;
   addMessage: (msg: ChatMessage) => void;
+  removeLastMessage: () => ChatMessage | null;
   setChatThinking: (v: boolean) => void;
   getActiveConversation: () => Conversation | null;
   getAttached: () => string[];
@@ -404,6 +419,19 @@ export const useStore = create<AppState>((set, get) => ({
     saveConversations(convos);
     return { conversations: convos };
   }),
+  removeLastMessage: () => {
+    let removed: ChatMessage | null = null;
+    set((s) => {
+      const convos = s.conversations.map((c) => {
+        if (c.id !== s.activeConversationId || c.messages.length === 0) return c;
+        removed = c.messages[c.messages.length - 1];
+        return { ...c, messages: c.messages.slice(0, -1), updatedAt: Date.now() };
+      });
+      saveConversations(convos);
+      return { conversations: convos };
+    });
+    return removed;
+  },
   setChatThinking: (v) => set({ chatThinking: v }),
   getActiveConversation: () => {
     const s = get();
@@ -497,10 +525,16 @@ export const useStore = create<AppState>((set, get) => ({
 
   createCapture: async (title, space, captureType, tags, body, opts?) => {
     try {
-      const capture = await api.createCapture(title, space, captureType, tags, body, opts);
+      // Assign random color & icon if not provided
+      const finalOpts = {
+        ...opts,
+        color: opts?.color || randomColorKey(),
+        icon: opts?.icon || randomIcon(),
+      };
+      const capture = await api.createCapture(title, space, captureType, tags, body, finalOpts);
       set((s) => ({
         captures: [
-          { id: capture.id, title: capture.title, summary: capture.summary, space: capture.space, capture_type: capture.capture_type, status: capture.status, date: capture.date, tags: capture.tags, projects: capture.projects },
+          { id: capture.id, title: capture.title, summary: capture.summary, space: capture.space, capture_type: capture.capture_type, status: capture.status, date: capture.date, tags: capture.tags, projects: capture.projects, color: capture.color, icon: capture.icon },
           ...s.captures,
         ],
         captureCache: { ...s.captureCache, [capture.id]: capture },

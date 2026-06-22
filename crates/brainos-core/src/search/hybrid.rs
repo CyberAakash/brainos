@@ -232,5 +232,7 @@ fn overview_from_capture(c: &crate::models::Capture) -> CaptureOverview {
         date: c.date,
         tags: c.tags.clone(),
         projects: c.projects.clone(),
+        color: c.color.clone(),
+        icon: c.icon.clone(),
     }
 }

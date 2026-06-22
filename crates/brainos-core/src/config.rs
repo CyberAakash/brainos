@@ -16,7 +16,11 @@ pub struct Config {
 pub struct GeneralConfig {
     pub kb_root: PathBuf,
     pub display_name: String,
+    #[serde(default = "default_true")]
+    pub auto_index: bool,
 }
+
+fn default_true() -> bool { true }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
@@ -99,6 +103,8 @@ fn default_temporal_half_life() -> u32 { 90 }
 pub struct UiConfig {
     pub theme: String,
     pub sidebar_width: u32,
+    #[serde(default)]
+    pub compact_mode: bool,
 }
 
 impl Default for Config {
@@ -111,6 +117,7 @@ impl Default for Config {
             general: GeneralConfig {
                 kb_root,
                 display_name: String::new(),
+                auto_index: true,
             },
             sync: SyncConfig {
                 enabled: false,
@@ -132,6 +139,7 @@ impl Default for Config {
             ui: UiConfig {
                 theme: "system".into(),
                 sidebar_width: 280,
+                compact_mode: false,
             },
         }
     }

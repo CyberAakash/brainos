@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useStore, getTypeMeta, TYPE_META } from "@/store";
+import { useStore } from "@/store";
 import type { CaptureStatus } from "@/lib/ipc";
 
 /* ────── NewCaptureModal ────── */
 
-const TYPE_KEYS = Object.keys(TYPE_META);
-const SPACES = ["work", "personal"] as const;
+const SPACES = ["work", "personal", "wiki"] as const;
 const STATUSES: CaptureStatus[] = ["draft", "active", "resolved"];
 
 export default function NewCaptureModal() {
@@ -16,14 +15,11 @@ export default function NewCaptureModal() {
 
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
-  const [type, setType] = useState("learning");
-  const [space, setSpace] = useState<"work" | "personal">("work");
+  const [space, setSpace] = useState<"work" | "personal" | "wiki">("work");
   const [status, setStatus] = useState<CaptureStatus>("draft");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [body, setBody] = useState("");
-  const [customTypeInput, setCustomTypeInput] = useState(false);
-  const [customType, setCustomType] = useState("");
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -33,14 +29,11 @@ export default function NewCaptureModal() {
     if (newOpen) {
       setTitle("");
       setSummary("");
-      setType("learning");
       setSpace("work");
       setStatus("draft");
       setTags([]);
       setTagInput("");
       setBody("");
-      setCustomTypeInput(false);
-      setCustomType("");
       setProjectName("");
       setProjectPath("");
       setShowAdvanced(false);
@@ -80,29 +73,6 @@ export default function NewCaptureModal() {
     [addTag, tagInput, tags],
   );
 
-  const confirmCustomType = useCallback(() => {
-    const trimmed = customType.trim().toLowerCase();
-    if (trimmed) {
-      setType(trimmed);
-    }
-    setCustomTypeInput(false);
-    setCustomType("");
-  }, [customType]);
-
-  const handleCustomTypeKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        confirmCustomType();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        setCustomTypeInput(false);
-        setCustomType("");
-      }
-    },
-    [confirmCustomType],
-  );
-
   const handleCreate = useCallback(async () => {
     if (!title.trim()) {
       showToast("Add a title first");
@@ -113,8 +83,8 @@ export default function NewCaptureModal() {
     if (status !== "draft") opts.status = status;
     if (projectName.trim()) opts.projectName = projectName.trim();
     if (projectPath.trim()) opts.projectPath = projectPath.trim();
-    await createCapture(title.trim(), space, type, tags, body, Object.keys(opts).length ? opts : undefined);
-  }, [title, summary, space, type, status, tags, body, projectName, projectPath, createCapture, showToast]);
+    await createCapture(title.trim(), space, "note", tags, body, Object.keys(opts).length ? opts : undefined);
+  }, [title, summary, space, status, tags, body, projectName, projectPath, createCapture, showToast]);
 
   if (!newOpen) return null;
 
@@ -151,76 +121,6 @@ export default function NewCaptureModal() {
           placeholder="One-line summary (optional)"
           style={S.summaryInput}
         />
-
-        {/* ── Type selector ── */}
-        <label style={S.fieldLabel}>TYPE</label>
-        <div style={S.pillRow}>
-          {TYPE_KEYS.map((t) => {
-            const m = getTypeMeta(t);
-            const active = type === t;
-            return (
-              <button
-                key={t}
-                onClick={() => setType(t)}
-                style={{
-                  ...S.typePill,
-                  background: active ? m.bg : "#F0EBE1",
-                  color: active ? m.fg : "#8C887E",
-                  boxShadow: active ? `0 0 0 1.5px ${m.dot}` : "none",
-                }}
-              >
-                <span style={{ ...S.pillDot, background: active ? m.dot : "#C4BFAE" }} />
-                {t}
-              </button>
-            );
-          })}
-
-          {/* Show custom type as a selected pill if it's not one of the built-in types */}
-          {!TYPE_KEYS.includes(type) && type !== "learning" && (
-            (() => {
-              const m = getTypeMeta(type);
-              return (
-                <button
-                  key={type}
-                  onClick={() => setType(type)}
-                  style={{
-                    ...S.typePill,
-                    background: m.bg,
-                    color: m.fg,
-                    boxShadow: `0 0 0 1.5px ${m.dot}`,
-                  }}
-                >
-                  <span style={{ ...S.pillDot, background: m.dot }} />
-                  {type}
-                </button>
-              );
-            })()
-          )}
-
-          {/* + button / inline custom type input */}
-          {customTypeInput ? (
-            <input
-              value={customType}
-              onChange={(e) => setCustomType(e.target.value)}
-              onKeyDown={handleCustomTypeKeyDown}
-              onBlur={confirmCustomType}
-              placeholder="type name"
-              autoFocus
-              style={S.customTypeInput}
-            />
-          ) : (
-            <button
-              onClick={() => setCustomTypeInput(true)}
-              style={S.addTypePill}
-              title="Add custom type"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <line x1="6" y1="1" x2="6" y2="11" />
-                <line x1="1" y1="6" x2="11" y2="6" />
-              </svg>
-            </button>
-          )}
-        </div>
 
         {/* ── Space + Status ── */}
         <div style={S.twoCol}>
@@ -444,62 +344,6 @@ const S: Record<string, React.CSSProperties> = {
     color: "#56524A",
     marginBottom: 8,
     display: "block",
-  },
-
-  /* Type pills */
-  pillRow: {
-    display: "flex",
-    flexWrap: "wrap" as const,
-    gap: 8,
-    marginBottom: 18,
-  },
-  typePill: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 13,
-    fontWeight: 500,
-    fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
-    padding: "6px 12px",
-    borderRadius: 8,
-    border: "none",
-    cursor: "pointer",
-    transition: "all 0.12s",
-  },
-  pillDot: {
-    width: 6,
-    height: 6,
-    borderRadius: "50%",
-    display: "inline-block",
-    flexShrink: 0,
-  },
-  addTypePill: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 34,
-    height: 32,
-    fontSize: 16,
-    fontWeight: 500,
-    fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
-    borderRadius: 8,
-    border: "1.5px dashed #C4BFAE",
-    background: "transparent",
-    color: "#9A958A",
-    cursor: "pointer",
-    transition: "all 0.12s",
-  },
-  customTypeInput: {
-    fontSize: 13,
-    fontWeight: 500,
-    fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
-    padding: "6px 12px",
-    borderRadius: 8,
-    border: "1.5px solid #BD6A47",
-    outline: "none",
-    background: "#FFFFFF",
-    color: "#21201C",
-    width: 120,
   },
 
   /* Space + Status row */

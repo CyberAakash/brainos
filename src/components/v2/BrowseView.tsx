@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import { useStore, getTypeMeta } from "@/store";
+import { useStore, getColorMeta } from "@/store";
 import type { CaptureOverview } from "@/lib/ipc";
 import MarqueeTitle from "./MarqueeTitle";
 
@@ -37,31 +37,6 @@ function loadViewMode(): ViewMode {
 const ROW_H = 52;
 const ROW_GAP = 0;
 const OVERSCAN = 8;
-
-/* ────── Type icon for thumbnails ────── */
-function TypeIcon({ type, size = 18 }: { type: string; size?: number }) {
-  const s = size;
-  switch (type) {
-    case "learning":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M2 3h10a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V3z"/><path d="M14 6h2v7a2 2 0 01-2 2"/><line x1="5" y1="7" x2="11" y2="7"/><line x1="5" y1="10" x2="9" y2="10"/></svg>;
-    case "debugging":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><circle cx="9" cy="10" r="4"/><path d="M9 6V3M5.5 7.5L3 5.5M12.5 7.5L15 5.5M5 10H2M13 10h3M5.5 12.5L3 14.5M12.5 12.5L15 14.5"/></svg>;
-    case "fix":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M11.5 2.5l4 4M3 13l8-8M3 13l-1 3 3-1"/></svg>;
-    case "insight":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M9 2a5 5 0 00-2 9.6V14h4v-2.4A5 5 0 009 2z"/><line x1="7" y1="16" x2="11" y2="16"/></svg>;
-    case "decision":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M9 2v6M9 8l-5 5M9 8l5 5"/><circle cx="4" cy="14" r="1.5"/><circle cx="14" cy="14" r="1.5"/></svg>;
-    case "architecture":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="11" y="2" width="5" height="5" rx="1"/><rect x="6.5" y="11" width="5" height="5" rx="1"/><line x1="4.5" y1="7" x2="9" y2="11"/><line x1="13.5" y1="7" x2="9" y2="11"/></svg>;
-    case "pattern":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M3 9a6 6 0 0112 0"/><path d="M6 9a3 3 0 016 0"/><circle cx="9" cy="9" r="1"/><line x1="9" y1="10" x2="9" y2="15"/></svg>;
-    case "reference":
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M3 2h4l2 2h6v11a1 1 0 01-1 1H4a1 1 0 01-1-1V2z"/><line x1="7" y1="9" x2="13" y2="9"/><line x1="7" y1="12" x2="11" y2="12"/></svg>;
-    default:
-      return <svg width={s} height={s} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><rect x="3" y="2" width="12" height="14" rx="1.5"/><line x1="6" y1="6" x2="12" y2="6"/><line x1="6" y1="9" x2="12" y2="9"/><line x1="6" y1="12" x2="10" y2="12"/></svg>;
-  }
-}
 
 /* ────── Sort comparator ────── */
 function sortCaptures(list: CaptureOverview[], field: SortField, dir: SortDir): CaptureOverview[] {
@@ -416,7 +391,6 @@ function ListView({
           )}
           {items.slice(startIdx, endIdx).map((c, i) => {
             const idx = startIdx + i;
-            const meta = getTypeMeta(c.capture_type);
             const isHovered = hoveredId === c.id;
             const isMenuOpen = menuOpenId === c.id;
             const isFav = favorites.includes(c.id);
@@ -444,14 +418,22 @@ function ListView({
                   gap: 12,
                 }}
               >
-                {/* Thumbnail / type icon */}
+                {/* Thumbnail / doc icon */}
                 <div style={{
                   width: 40, height: 32, flexShrink: 0,
-                  background: meta.bg, borderRadius: 6,
+                  background: getColorMeta(c.color).bg, borderRadius: 6,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: meta.fg,
+                  color: "#8A8579",
                 }}>
-                  <TypeIcon type={c.capture_type} size={16} />
+                  {c.icon ? (
+                    <span style={{ fontSize: 16, lineHeight: 1 }}>{c.icon}</span>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>
+                    </svg>
+                  )}
                 </div>
 
                 {/* Title + tag pills */}
@@ -601,14 +583,14 @@ function GridView({
       )}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(min(220px, 100%), 1fr))",
-        gap: 12,
+        gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))",
+        gap: 14,
       }}>
         {items.map((c) => {
-          const meta = getTypeMeta(c.capture_type);
           const isHovered = hoveredId === c.id;
           const isMenuOpen = menuOpenId === c.id;
           const isFav = favorites.includes(c.id);
+          const snippet = c.summary || "";
 
           return (
             <div
@@ -621,86 +603,143 @@ function GridView({
               onMouseLeave={() => setHoveredId(null)}
               style={{
                 background: "#FFFFFF",
-                border: `1px solid ${isHovered ? "#E0D8C8" : "#ECE7DC"}`,
-                borderRadius: 12,
-                overflow: "hidden",
+                border: `1px solid ${isHovered ? "#D8D0C2" : "#E8E3D8"}`,
+                borderRadius: 14,
                 cursor: "pointer",
-                transition: "box-shadow .15s, border-color .15s, transform .15s",
-                boxShadow: isHovered ? "0 6px 18px rgba(40,36,28,.07)" : "none",
-                transform: isHovered ? "translateY(-2px)" : "none",
+                transition: "box-shadow .2s, border-color .2s, transform .2s",
+                boxShadow: isHovered ? "0 8px 28px rgba(40,36,28,.09)" : "none",
+                transform: isHovered ? "translateY(-3px)" : "none",
                 display: "flex",
                 flexDirection: "column",
                 position: "relative",
               }}
             >
-              {/* Preview area with type icon */}
+              {/* Preview area — neutral warm with doc text preview */}
               <div style={{
-                height: 120, background: meta.bg,
+                height: 170, background: getColorMeta(c.color).bg,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                position: "relative", color: meta.fg,
+                borderRadius: "14px 14px 0 0", overflow: "hidden",
+                position: "relative",
               }}>
-                <TypeIcon type={c.capture_type} size={32} />
-
-                {/* Hover-revealed action buttons */}
+                {/* Faded text preview */}
+                {snippet ? (
+                  <div style={{
+                    position: "absolute", inset: 16, top: 18,
+                    fontSize: 10, lineHeight: "15px", color: "#8A8579",
+                    opacity: 0.3, overflow: "hidden",
+                    fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    wordBreak: "break-word",
+                    WebkitMaskImage: "linear-gradient(to bottom, black 40%, transparent 95%)",
+                    maskImage: "linear-gradient(to bottom, black 40%, transparent 95%)",
+                  }}>
+                    {snippet.slice(0, 400)}
+                  </div>
+                ) : null}
+                {/* Centered document icon */}
                 <div style={{
-                  position: "absolute", top: 8, right: 8,
-                  display: "flex", gap: 4,
-                  opacity: isHovered || isMenuOpen ? 1 : 0,
-                  transition: "opacity .12s",
+                  width: 48, height: 48, borderRadius: 12,
+                  background: "rgba(255,255,255,.55)",
+                  backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#8A8579", zIndex: 1,
                 }}>
-                  <CaptureMenu
-                    isOpen={isMenuOpen}
-                    onToggle={() => setMenuOpenId(isMenuOpen ? null : c.id)}
-                    isFavorited={isFav}
-                    onFavorite={() => { favorite(c.id); setMenuOpenId(null); }}
-                    onUnfavorite={() => { unfavorite(c.id); setMenuOpenId(null); }}
-                    onCopy={() => { onCopy(c.id); setMenuOpenId(null); }}
-                    onEdit={() => { onEdit(c.id); setMenuOpenId(null); }}
-                    onAddToChat={() => { onAddToChat(c.id); setMenuOpenId(null); }}
-                    onDelete={() => { deleteCapture(c.id); setMenuOpenId(null); }}
-                  />
-                  <button
-                    onClick={(e) => { e.stopPropagation(); isFav ? unfavorite(c.id) : favorite(c.id); }}
-                    title={isFav ? "Unfavorite" : "Favorite"}
-                    style={{
-                      width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
-                      border: "none", background: "rgba(255,255,255,.85)", backdropFilter: "blur(4px)",
-                      color: isFav ? "#BD6A47" : "#7C7468",
-                      borderRadius: 6, cursor: "pointer",
-                    }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 14 14"
-                      fill={isFav ? "#BD6A47" : "none"}
-                      stroke={isFav ? "none" : "currentColor"}
-                      strokeWidth="1.3"
-                    >
-                      <path d="M7 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L7 10.43l-3.52 1.92.67-3.93L1.3 5.64l3.94-.57Z"/>
+                  {c.icon ? (
+                    <span style={{ fontSize: 28, lineHeight: 1 }}>{c.icon}</span>
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>
                     </svg>
-                  </button>
+                  )}
                 </div>
               </div>
 
-              {/* Title + meta */}
-              <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+              {/* Hover-revealed action buttons — on card wrapper so dropdown isn't clipped */}
+              <div style={{
+                position: "absolute", top: 8, right: 8,
+                display: "flex", gap: 4, zIndex: 10,
+                opacity: isHovered || isMenuOpen ? 1 : 0,
+                transition: "opacity .12s",
+              }}>
+                <CaptureMenu
+                  isOpen={isMenuOpen}
+                  onToggle={() => setMenuOpenId(isMenuOpen ? null : c.id)}
+                  isFavorited={isFav}
+                  onFavorite={() => { favorite(c.id); setMenuOpenId(null); }}
+                  onUnfavorite={() => { unfavorite(c.id); setMenuOpenId(null); }}
+                  onCopy={() => { onCopy(c.id); setMenuOpenId(null); }}
+                  onEdit={() => { onEdit(c.id); setMenuOpenId(null); }}
+                  onAddToChat={() => { onAddToChat(c.id); setMenuOpenId(null); }}
+                  onDelete={() => { deleteCapture(c.id); setMenuOpenId(null); }}
+                />
+                <button
+                  onClick={(e) => { e.stopPropagation(); isFav ? unfavorite(c.id) : favorite(c.id); }}
+                  title={isFav ? "Unfavorite" : "Favorite"}
+                  style={{
+                    width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+                    border: "none", background: "rgba(255,255,255,.85)", backdropFilter: "blur(4px)",
+                    color: isFav ? "#BD6A47" : "#7C7468",
+                    borderRadius: 6, cursor: "pointer",
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 14 14"
+                    fill={isFav ? "#BD6A47" : "none"}
+                    stroke={isFav ? "none" : "currentColor"}
+                    strokeWidth="1.3"
+                  >
+                    <path d="M7 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L7 10.43l-3.52 1.92.67-3.93L1.3 5.64l3.94-.57Z"/>
+                  </svg>
+                </button>
+              </div>
+
+              {/* Card body — title, snippet, tags, metadata */}
+              <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
                 <MarqueeTitle
                   text={c.title}
                   externalHover={isHovered}
                   always={detailOpen && selectedId === c.id}
                   style={{
-                    fontSize: 14, fontWeight: 500, color: "#21201C",
-                    lineHeight: 1.3,
+                    fontSize: 14.5, fontWeight: 600, color: "#21201C",
+                    lineHeight: "20px",
                     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
                   }}
                 />
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+
+                {/* Snippet */}
+                {snippet && (
+                  <span style={{
+                    fontSize: 12, lineHeight: "17px", color: "#8A8579",
+                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
+                    overflow: "hidden", textOverflow: "ellipsis",
+                  }}>{snippet}</span>
+                )}
+
+                {/* Tags */}
+                {c.tags.length > 0 && (
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
+                    {c.tags.slice(0, 3).map((tag) => (
+                      <span key={tag} style={{
+                        fontSize: 10, color: "#9A958A", background: "#F5F3ED",
+                        borderRadius: 4, padding: "1px 6px", fontWeight: 500,
+                      }}>#{tag}</span>
+                    ))}
+                    {c.tags.length > 3 && (
+                      <span style={{ fontSize: 10, color: "#B0A99C" }}>+{c.tags.length - 3}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Avatar + date */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                   <div style={{
-                    width: 18, height: 18, borderRadius: "50%",
-                    background: "#BD6A47", color: "#FFF",
+                    width: 20, height: 20, borderRadius: "50%",
+                    background: "#E8E5DD", color: "#7C7468",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 9, fontWeight: 600, flexShrink: 0,
-                  }}>A</div>
-                  <span style={{ fontSize: 11.5, color: "#7C7468" }}>You</span>
-                  <span style={{ fontSize: 11, color: "#D4CFC4" }}>·</span>
+                  }}>Y</div>
+                  <span style={{ fontSize: 11.5, color: "#B0A99C", fontWeight: 450 }}>You</span>
+                  <span style={{ fontSize: 11.5, color: "#C4BEB2" }}>·</span>
                   <span style={{ fontSize: 11.5, color: "#B0A99C" }}>{relativeTime(c.date)}</span>
                 </div>
               </div>

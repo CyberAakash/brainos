@@ -25,6 +25,8 @@ pub struct Capture {
     pub chain: Option<Chain>,
     pub links: Vec<Link>,
     pub body_text: String,
+    pub color: Option<String>,
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +40,8 @@ pub struct CaptureOverview {
     pub date: NaiveDate,
     pub tags: Vec<String>,
     pub projects: Vec<String>,
+    pub color: Option<String>,
+    pub icon: Option<String>,
 }
 
 /// Project context for a capture
@@ -118,6 +122,7 @@ impl std::fmt::Display for CaptureStatus {
 pub enum Space {
     Work,
     Personal,
+    Wiki,
 }
 
 impl std::fmt::Display for Space {
@@ -125,6 +130,7 @@ impl std::fmt::Display for Space {
         match self {
             Self::Work => write!(f, "work"),
             Self::Personal => write!(f, "personal"),
+            Self::Wiki => write!(f, "wiki"),
         }
     }
 }

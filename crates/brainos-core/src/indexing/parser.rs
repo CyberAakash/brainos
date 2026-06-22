@@ -46,6 +46,12 @@ struct Frontmatter {
     /// Reference links
     #[serde(default)]
     links: Option<Vec<Link>>,
+    /// Card color (from fixed palette)
+    #[serde(default)]
+    color: Option<String>,
+    /// Card icon (emoji)
+    #[serde(default)]
+    icon: Option<String>,
 }
 
 /// Parse a capture markdown file into a Capture struct
@@ -99,6 +105,8 @@ pub fn parse_capture_file(path: &Path) -> Result<Capture> {
         chain: fm.chain,
         links: merge_links(fm.links.unwrap_or_default(), extract_urls(body)),
         body_text: body.to_string(),
+        color: fm.color,
+        icon: fm.icon,
     })
 }
 

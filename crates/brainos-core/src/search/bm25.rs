@@ -27,6 +27,8 @@ pub fn search_bm25(store: &Store, query: &str, limit: u32) -> Result<Vec<SearchR
                     date: capture.date,
                     tags: capture.tags,
                     projects: capture.projects,
+                    color: capture.color,
+                    icon: capture.icon,
                 },
                 score: -score, // FTS5 rank is negative (lower = better)
                 snippet,
@@ -58,6 +60,8 @@ pub fn search_bm25(store: &Store, query: &str, limit: u32) -> Result<Vec<SearchR
                         date: capture.date,
                         tags: capture.tags,
                         projects: capture.projects,
+                        color: capture.color,
+                        icon: capture.icon,
                     },
                     score: 0.0, // LIKE results have no BM25 score
                     snippet,

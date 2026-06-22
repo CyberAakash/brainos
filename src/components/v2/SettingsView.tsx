@@ -152,9 +152,9 @@ function SettingRow({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
-function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
+function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button onClick={onChange} style={{
+    <button onClick={() => onChange(!on)} style={{
       width: 38, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
       padding: 3, background: on ? "#BD6A47" : "#D6D1C7", transition: "background .15s ease",
     }}>
@@ -199,9 +199,28 @@ function ValueDisplay({ children }: { children: React.ReactNode }) {
  *  GENERAL PAGE
  * ══════════════════════════════════════════════════ */
 
-function GeneralPage({ kbPath }: { kbPath: string }) {
+function GeneralPage({ kbPath, displayName, autoIndex, onDisplayName, onAutoIndex }: {
+  kbPath: string;
+  displayName: string;
+  autoIndex: boolean;
+  onDisplayName: (v: string) => void;
+  onAutoIndex: (v: boolean) => void;
+}) {
   return (
     <>
+      <SettingRow label="Display name" hint="Used in the greeting on the home screen">
+        <input
+          value={displayName}
+          onChange={(e) => onDisplayName(e.target.value)}
+          onBlur={() => api.saveGeneralSettings({ displayName })}
+          placeholder="Your name"
+          style={{
+            fontSize: 13, color: "#21201C", background: "#FAF8F3", padding: "5px 12px",
+            borderRadius: 8, border: "1px solid #E7E1D6", fontFamily: "inherit", width: 180,
+            outline: "none",
+          }}
+        />
+      </SettingRow>
       <SettingRow label="Knowledge base path" hint="Root folder for your captures">
         <ValueDisplay>{kbPath || "~/knowledge-base"}</ValueDisplay>
       </SettingRow>
@@ -212,7 +231,7 @@ function GeneralPage({ kbPath }: { kbPath: string }) {
         <ValueDisplay>50</ValueDisplay>
       </SettingRow>
       <SettingRow label="Auto-index on save" hint="Re-index captures when files change">
-        <Toggle on={true} onChange={() => {}} />
+        <Toggle on={autoIndex} onChange={(v) => { onAutoIndex(v); api.saveGeneralSettings({ autoIndex: v }); }} />
       </SettingRow>
 
       <SectionTitle>Danger zone</SectionTitle>
@@ -451,7 +470,7 @@ const inputStyle: React.CSSProperties = {
  *  APPEARANCE PAGE
  * ══════════════════════════════════════════════════ */
 
-function AppearancePage() {
+function AppearancePage({ compactMode, onCompactMode }: { compactMode: boolean; onCompactMode: (v: boolean) => void }) {
   const [theme, setTheme] = useState<"system" | "light" | "dark">("light");
   const accentColors = ["#BD6A47", "#5B8DEF", "#43A680", "#9B6CC4", "#D4784B", "#E05C6F"];
   const [accent, setAccent] = useState("#BD6A47");
@@ -494,7 +513,7 @@ function AppearancePage() {
       </SettingRow>
 
       <SettingRow label="Compact mode" hint="Reduce spacing and padding">
-        <Toggle on={false} onChange={() => {}} />
+        <Toggle on={compactMode} onChange={(v) => { onCompactMode(v); api.saveGeneralSettings({ compactMode: v }); }} />
       </SettingRow>
     </>
   );
@@ -644,6 +663,9 @@ export default function SettingsView() {
   const [testing, setTesting] = useState<string | null>(null);
   const [cliVersion, setCliVersion] = useState<string | null | undefined>(undefined);
   const [kbPath, setKbPath] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [autoIndex, setAutoIndex] = useState(true);
+  const [compactMode, setCompactMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
@@ -653,6 +675,9 @@ export default function SettingsView() {
       setActive(s.chat.active || "claude");
       setProviders(s.chat.providers || {});
       setKbPath(s.general.kb_root || "");
+      setDisplayName(s.general.display_name || "");
+      setAutoIndex(s.general.auto_index ?? true);
+      setCompactMode(s.ui.compact_mode ?? false);
       setLoaded(true);
     }).catch(() => setLoaded(true));
     api.detectClaudeCli().then(setCliVersion).catch(() => setCliVersion(null));
@@ -767,7 +792,7 @@ export default function SettingsView() {
               color: "#21201C", margin: "0 0 20px",
             }}>{PAGE_TITLES[tab]}</h1>
 
-            {tab === "general" && <GeneralPage kbPath={kbPath} />}
+            {tab === "general" && <GeneralPage kbPath={kbPath} displayName={displayName} autoIndex={autoIndex} onDisplayName={setDisplayName} onAutoIndex={setAutoIndex} />}
 
             {tab === "llm" && (
               <>
@@ -795,7 +820,7 @@ export default function SettingsView() {
             )}
 
             {tab === "embeddings" && <PlaceholderPage title="Embeddings" description="Configure the embedding model for vector search" />}
-            {tab === "appearance" && <AppearancePage />}
+            {tab === "appearance" && <AppearancePage compactMode={compactMode} onCompactMode={setCompactMode} />}
             {tab === "shortcuts" && <ShortcutsPage />}
             {tab === "sources" && <PlaceholderPage title="Sources" description="Manage watched folders and source directories" />}
             {tab === "sync" && <PlaceholderPage title="Sync" description="Configure sync interval and trigger manual sync" />}
