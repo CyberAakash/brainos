@@ -199,11 +199,8 @@ impl Store {
                     .unwrap_or_default();
 
                 let status = match row.status.as_deref() {
-                    Some("active") => CaptureStatus::Active,
-                    Some("resolved") => CaptureStatus::Resolved,
                     Some("archived") => CaptureStatus::Archived,
-                    Some("expired") => CaptureStatus::Expired,
-                    _ => CaptureStatus::Draft,
+                    _ => CaptureStatus::Active,
                 };
 
                 Ok(Some(Capture {
@@ -243,6 +240,10 @@ impl Store {
         );
         let mut bind_values: Vec<String> = Vec::new();
 
+        // By default, exclude workspace source captures from the KB list.
+        // Note: source captures no longer exist in the captures table (migrated to workspace_files).
+        // This filter is kept as a safety net for any legacy data.
+
         if let Some(ref space) = filters.space {
             bind_values.push(space.to_string());
             sql.push_str(&format!(" AND c.space = ?{}", bind_values.len()));
@@ -257,6 +258,17 @@ impl Store {
                 " AND (c.project_name = ?{0} OR c.id IN (SELECT capture_id FROM capture_projects WHERE project = ?{0}))",
                 bind_values.len()
             ));
+        }
+
+        // Status filter: default to active-only unless include_archived is set
+        if filters.include_archived == Some(true) {
+            // show all — no status filter
+        } else if let Some(ref status) = filters.status {
+            bind_values.push(status.to_string());
+            sql.push_str(&format!(" AND c.status = ?{}", bind_values.len()));
+        } else {
+            // Default: exclude archived
+            sql.push_str(" AND (c.status IS NULL OR c.status != 'archived')");
         }
 
         sql.push_str(" ORDER BY c.date DESC, c.id DESC");
@@ -285,9 +297,8 @@ impl Store {
             let tags = self.get_tags(&row.id)?;
             let projects = self.get_projects(&row.id)?;
             let status = match row.status.as_deref() {
-                Some("active") => CaptureStatus::Active,
-                Some("resolved") => CaptureStatus::Resolved,
-                _ => CaptureStatus::Draft,
+                Some("archived") => CaptureStatus::Archived,
+                _ => CaptureStatus::Active,
             };
             captures.push(CaptureOverview {
                 id: row.id,
@@ -304,6 +315,24 @@ impl Store {
             });
         }
         Ok(captures)
+    }
+
+    /// Archive a capture (set status to 'archived').
+    pub fn archive_capture(&self, id: &str) -> Result<()> {
+        self.conn().execute(
+            "UPDATE captures SET status = 'archived' WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Unarchive a capture (set status back to 'active').
+    pub fn unarchive_capture(&self, id: &str) -> Result<()> {
+        self.conn().execute(
+            "UPDATE captures SET status = 'active' WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
     }
 
     /// Find the latest capture for a given project name (for auto-chaining)
@@ -330,7 +359,7 @@ impl Store {
         let sanitized: String = trimmed
             .chars()
             .map(|c| {
-                if c.is_alphanumeric() || c == '_' || c == '.' || c == '@' || c == '#' {
+                if c.is_alphanumeric() || c == '_' {
                     c
                 } else if c.is_whitespace() {
                     ' '
@@ -515,4 +544,369 @@ struct CaptureOverviewRow {
     date: String,
     color: Option<String>,
     icon: Option<String>,
+}
+
+// ── Workspace Root operations ────────────────────────────────
+
+/// A registered workspace root stored in the DB.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RootRow {
+    pub id: i64,
+    pub path: String,
+    pub name: String,
+    pub kind: String,
+}
+
+/// Stats for a single root.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RootStats {
+    pub root_id: i64,
+    pub file_count: u32,
+}
+
+impl Store {
+    /// Register a new workspace root, or return the existing one if the path
+    /// is already registered. Updates the name on conflict.
+    pub fn add_root(&self, path: &str, name: &str, kind: &str) -> Result<i64> {
+        self.conn().execute(
+            "INSERT INTO roots (path, name, kind) VALUES (?1, ?2, ?3)
+             ON CONFLICT(path) DO UPDATE SET name = excluded.name",
+            params![path, name, kind],
+        )?;
+        // last_insert_rowid returns the rowid whether it was an insert or an
+        // on-conflict update, but only if the row was actually modified.
+        // To be safe, always SELECT back.
+        let id: i64 = self.conn().query_row(
+            "SELECT id FROM roots WHERE path = ?1",
+            params![path],
+            |row| row.get(0),
+        )?;
+        Ok(id)
+    }
+
+    /// Remove a workspace root and all its indexed file metadata.
+    pub fn remove_root(&self, root_id: i64) -> Result<()> {
+        // Guard: never allow deleting the KB pseudo-root (id=0)
+        if root_id == 0 {
+            anyhow::bail!("Cannot remove the knowledge base root (id=0)");
+        }
+        // Delete workspace file metadata for this root
+        self.conn().execute("DELETE FROM workspace_files WHERE root_id = ?1", params![root_id])?;
+        // Also clean up any legacy source captures that might remain
+        let ids: Vec<String> = {
+            let mut stmt = self.conn().prepare(
+                "SELECT id FROM captures WHERE root_id = ?1"
+            )?;
+            let rows = stmt.query_map(params![root_id], |row| row.get::<_, String>(0))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        for id in &ids {
+            self.conn().execute("DELETE FROM captures_fts WHERE id = ?1", params![id]).ok();
+            self.conn().execute("DELETE FROM capture_vectors WHERE capture_id = ?1", params![id]).ok();
+        }
+        self.conn().execute("DELETE FROM captures WHERE root_id = ?1", params![root_id])?;
+        self.conn().execute("DELETE FROM roots WHERE id = ?1", params![root_id])?;
+        Ok(())
+    }
+
+    /// List all registered roots.
+    pub fn list_roots(&self) -> Result<Vec<RootRow>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT id, path, name, kind FROM roots ORDER BY id"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(RootRow {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                kind: row.get(3)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Get a root by ID.
+    pub fn get_root(&self, root_id: i64) -> Result<Option<RootRow>> {
+        let result = self.conn().query_row(
+            "SELECT id, path, name, kind FROM roots WHERE id = ?1",
+            params![root_id],
+            |row| Ok(RootRow {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                kind: row.get(3)?,
+            }),
+        ).optional()?;
+        Ok(result)
+    }
+
+    /// Get a root by path.
+    pub fn get_root_by_path(&self, path: &str) -> Result<Option<RootRow>> {
+        let result = self.conn().query_row(
+            "SELECT id, path, name, kind FROM roots WHERE path = ?1",
+            params![path],
+            |row| Ok(RootRow {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                kind: row.get(3)?,
+            }),
+        ).optional()?;
+        Ok(result)
+    }
+
+    /// Count indexed files for a given root (from workspace_files table).
+    pub fn root_file_count(&self, root_id: i64) -> Result<u32> {
+        let count: u32 = self.conn().query_row(
+            "SELECT COUNT(*) FROM workspace_files WHERE root_id = ?1",
+            params![root_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    // ── Workspace files (metadata-only) ─────────────────────────
+
+    /// Check if a workspace file exists with the same hash.
+    pub fn has_workspace_file(&self, id: &str, file_hash: &str) -> bool {
+        self.conn().query_row(
+            "SELECT file_hash FROM workspace_files WHERE id = ?1",
+            params![id],
+            |row| row.get::<_, String>(0),
+        ).map(|h| h == file_hash).unwrap_or(false)
+    }
+
+    /// Upsert a workspace file's metadata (no content stored).
+    pub fn upsert_workspace_file(
+        &self,
+        id: &str,
+        root_id: i64,
+        relative_path: &str,
+        abs_path: &str,
+        file_hash: &str,
+        file_size: i64,
+        language: &str,
+        modified_at: Option<&str>,
+    ) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO workspace_files (id, root_id, relative_path, abs_path, file_hash, file_size, language, modified_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                relative_path=excluded.relative_path,
+                abs_path=excluded.abs_path,
+                file_hash=excluded.file_hash,
+                file_size=excluded.file_size,
+                language=excluded.language,
+                modified_at=excluded.modified_at,
+                updated_at=datetime('now')",
+            params![id, root_id, relative_path, abs_path, file_hash, file_size, language, modified_at],
+        )?;
+        Ok(())
+    }
+
+    /// Prune workspace files that were deleted from disk.
+    pub fn prune_stale_workspace_files(&self, root_id: i64, current_ids: &std::collections::HashSet<String>) -> Result<u32> {
+        let mut stmt = self.conn().prepare(
+            "SELECT id FROM workspace_files WHERE root_id = ?1"
+        )?;
+        let rows = stmt.query_map(params![root_id], |row| row.get::<_, String>(0))?;
+        let db_ids: Vec<String> = rows.filter_map(|r| r.ok()).collect();
+
+        let mut pruned = 0u32;
+        for id in db_ids {
+            if !current_ids.contains(&id) {
+                self.conn().execute("DELETE FROM workspace_files WHERE id = ?1", params![id])?;
+                pruned += 1;
+            }
+        }
+        Ok(pruned)
+    }
+
+    /// List workspace files for a given root.
+    pub fn list_workspace_files(&self, root_id: i64) -> Result<Vec<WorkspaceFileRow>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT id, root_id, relative_path, abs_path, file_hash, file_size, language, modified_at
+             FROM workspace_files WHERE root_id = ?1
+             ORDER BY relative_path ASC"
+        )?;
+        let rows = stmt.query_map(params![root_id], |row| {
+            Ok(WorkspaceFileRow {
+                id: row.get(0)?,
+                root_id: row.get(1)?,
+                relative_path: row.get(2)?,
+                abs_path: row.get(3)?,
+                file_hash: row.get(4)?,
+                file_size: row.get(5)?,
+                language: row.get(6)?,
+                modified_at: row.get(7)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Read a workspace file's content from disk on-demand.
+    /// This is the key function: content lives on disk, NOT in the database.
+    pub fn read_workspace_file_content(abs_path: &str) -> Result<String> {
+        let content = std::fs::read_to_string(abs_path)
+            .map_err(|e| anyhow::anyhow!("Cannot read file {}: {e}", abs_path))?;
+        Ok(content)
+    }
+
+    /// Find workspace files matching a path fragment.
+    /// Tries exact match on abs_path first, then suffix/contains match on relative_path.
+    /// Returns at most 3 matches to avoid flooding context with many files.
+    pub fn find_workspace_file_by_path(&self, path_fragment: &str) -> Result<Vec<WorkspaceFileRow>> {
+        // 1. Exact match on abs_path
+        let mut stmt = self.conn().prepare(
+            "SELECT id, root_id, relative_path, abs_path, file_hash, file_size, language, modified_at
+             FROM workspace_files WHERE abs_path = ?1 LIMIT 1"
+        )?;
+        let exact: Vec<WorkspaceFileRow> = stmt.query_map(params![path_fragment], |row| {
+            Ok(WorkspaceFileRow {
+                id: row.get(0)?,
+                root_id: row.get(1)?,
+                relative_path: row.get(2)?,
+                abs_path: row.get(3)?,
+                file_hash: row.get(4)?,
+                file_size: row.get(5)?,
+                language: row.get(6)?,
+                modified_at: row.get(7)?,
+            })
+        })?.filter_map(|r| r.ok()).collect();
+
+        if !exact.is_empty() {
+            return Ok(exact);
+        }
+
+        // 2. Suffix match — relative_path ends with the fragment (or contains it)
+        let frag_lower = path_fragment.to_lowercase();
+        let like_pattern = format!("%{}", frag_lower);
+        let mut stmt2 = self.conn().prepare(
+            "SELECT id, root_id, relative_path, abs_path, file_hash, file_size, language, modified_at
+             FROM workspace_files WHERE LOWER(relative_path) LIKE ?1
+             ORDER BY LENGTH(relative_path) ASC
+             LIMIT 3"
+        )?;
+        let suffix: Vec<WorkspaceFileRow> = stmt2.query_map(params![like_pattern], |row| {
+            Ok(WorkspaceFileRow {
+                id: row.get(0)?,
+                root_id: row.get(1)?,
+                relative_path: row.get(2)?,
+                abs_path: row.get(3)?,
+                file_hash: row.get(4)?,
+                file_size: row.get(5)?,
+                language: row.get(6)?,
+                modified_at: row.get(7)?,
+            })
+        })?.filter_map(|r| r.ok()).collect();
+
+        if !suffix.is_empty() {
+            return Ok(suffix);
+        }
+
+        // 3. Contains match — fragment appears anywhere in relative_path
+        let contains_pattern = format!("%{}%", frag_lower);
+        let mut stmt3 = self.conn().prepare(
+            "SELECT id, root_id, relative_path, abs_path, file_hash, file_size, language, modified_at
+             FROM workspace_files WHERE LOWER(relative_path) LIKE ?1
+             ORDER BY LENGTH(relative_path) ASC
+             LIMIT 3"
+        )?;
+        let contains: Vec<WorkspaceFileRow> = stmt3.query_map(params![contains_pattern], |row| {
+            Ok(WorkspaceFileRow {
+                id: row.get(0)?,
+                root_id: row.get(1)?,
+                relative_path: row.get(2)?,
+                abs_path: row.get(3)?,
+                file_hash: row.get(4)?,
+                file_size: row.get(5)?,
+                language: row.get(6)?,
+                modified_at: row.get(7)?,
+            })
+        })?.filter_map(|r| r.ok()).collect();
+
+        Ok(contains)
+    }
+
+    /// Search workspace files by keywords matched against relative_path.
+    /// Splits the query into tokens and returns files whose path contains ANY token.
+    /// Results are ranked: files matching more tokens come first.
+    pub fn search_workspace_files(&self, query: &str, limit: u32) -> Result<Vec<WorkspaceFileRow>> {
+        let tokens: Vec<&str> = query.split_whitespace()
+            .filter(|t| t.len() >= 2)
+            .collect();
+        if tokens.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Build a query that counts how many tokens match each file's path
+        // Each token is matched case-insensitively against relative_path
+        let mut conditions = Vec::new();
+        let mut bind_values: Vec<String> = Vec::new();
+        for token in &tokens {
+            bind_values.push(format!("%{}%", token.to_lowercase()));
+            let idx = bind_values.len();
+            conditions.push(format!("(LOWER(relative_path) LIKE ?{idx})"));
+        }
+
+        let where_clause = conditions.join(" OR ");
+        // Score = number of matching tokens (for ranking)
+        let score_expr: Vec<String> = (1..=bind_values.len())
+            .map(|i| format!("(CASE WHEN LOWER(relative_path) LIKE ?{i} THEN 1 ELSE 0 END)"))
+            .collect();
+        let score_sql = score_expr.join(" + ");
+
+        let sql = format!(
+            "SELECT id, root_id, relative_path, abs_path, file_hash, file_size, language, modified_at, ({score_sql}) AS score \
+             FROM workspace_files \
+             WHERE {where_clause} \
+             ORDER BY score DESC, LENGTH(relative_path) ASC \
+             LIMIT ?{}",
+            bind_values.len() + 1
+        );
+
+        let mut stmt = self.conn().prepare(&sql)?;
+        bind_values.push(limit.to_string());
+
+        // Build params dynamically
+        let params: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter()
+            .map(|v| v as &dyn rusqlite::types::ToSql)
+            .collect();
+
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok(WorkspaceFileRow {
+                id: row.get(0)?,
+                root_id: row.get(1)?,
+                relative_path: row.get(2)?,
+                abs_path: row.get(3)?,
+                file_hash: row.get(4)?,
+                file_size: row.get(5)?,
+                language: row.get(6)?,
+                modified_at: row.get(7)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Delete all workspace files for a root (used when removing a root).
+    pub fn delete_workspace_files_for_root(&self, root_id: i64) -> Result<u32> {
+        let deleted = self.conn().execute(
+            "DELETE FROM workspace_files WHERE root_id = ?1",
+            params![root_id],
+        )?;
+        Ok(deleted as u32)
+    }
+}
+
+/// Row returned from workspace_files queries.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkspaceFileRow {
+    pub id: String,
+    pub root_id: i64,
+    pub relative_path: String,
+    pub abs_path: String,
+    pub file_hash: String,
+    pub file_size: i64,
+    pub language: Option<String>,
+    pub modified_at: Option<String>,
 }

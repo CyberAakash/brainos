@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from "react"
 import { useStore, getColorMeta } from "@/store";
 import type { CaptureOverview } from "@/lib/ipc";
 import MarqueeTitle from "./MarqueeTitle";
+import ConfirmDialog from "./ConfirmDialog";
 
 /* ────── Relative time helper ────── */
 function relativeTime(dateStr: string): string {
@@ -76,11 +77,25 @@ export default function BrowseView() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [quickFilter, setQuickFilter] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [showFavOnly, setShowFavOnly] = useState(false);
+  const [browseMode, setBrowseMode] = useState<"active" | "favorites" | "archived">("active");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmAction, setConfirmAction] = useState<"archive" | "unarchive" | "delete" | null>(null);
+  const archiveCapture = useStore((s) => s.archiveCapture);
+  const unarchiveCapture = useStore((s) => s.unarchiveCapture);
+
+  // Multi-select helpers
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   // Explorer state from store (tags multi-select + search)
   const selectedTags = useStore((s) => s.selectedTags);
-  const explorerSearch = useStore((s) => s.explorerSearch);
+
 
   // Virtualization (list mode)
   const [scrollTop, setScrollTop] = useState(0);
@@ -94,15 +109,9 @@ export default function BrowseView() {
   }, []);
 
   // Toggle sort column
-  const toggleSort = useCallback((field: SortField) => {
-    setSortField((prev) => {
-      if (prev === field) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return field;
-      }
-      setSortDir(field === "title" ? "asc" : "desc");
-      return field;
-    });
+  const setSort = useCallback((field: SortField, dir: SortDir) => {
+    setSortField(field);
+    setSortDir(dir);
   }, []);
 
   // Close menu on any outside click (global)
@@ -122,22 +131,19 @@ export default function BrowseView() {
   // ── Filtered → sorted data ──
   const filtered = useMemo(() => {
     let list = captures;
-    // Apply favorites filter
-    if (showFavOnly) list = list.filter((c) => favorites.includes(c.id));
+    // Mode filter: active / favorites / archived (mutually exclusive)
+    if (browseMode === "archived") {
+      list = list.filter((c) => c.status === "archived");
+    } else if (browseMode === "favorites") {
+      list = list.filter((c) => c.status !== "archived" && favorites.includes(c.id));
+    } else {
+      list = list.filter((c) => c.status !== "archived");
+    }
     // Apply sidebar browseFilter (space / project)
     if (browseFilter.kind === "space" && browseFilter.value) list = list.filter((c) => c.space === browseFilter.value);
     if (browseFilter.kind === "project" && browseFilter.value) list = list.filter((c) => c.projects.includes(browseFilter.value!));
     // Apply multi-select tags from explorer
     if (selectedTags.length > 0) list = list.filter((c) => selectedTags.every((t) => c.tags.includes(t)));
-    // Apply explorer search
-    if (explorerSearch.trim()) {
-      const eq = explorerSearch.toLowerCase();
-      list = list.filter((c) =>
-        c.title.toLowerCase().includes(eq) ||
-        c.tags.some((t) => t.toLowerCase().includes(eq)) ||
-        c.space.toLowerCase().includes(eq)
-      );
-    }
     // Apply toolbar quick filter
     if (quickFilter.trim()) {
       const q = quickFilter.toLowerCase();
@@ -148,7 +154,32 @@ export default function BrowseView() {
       );
     }
     return sortCaptures(list, sortField, sortDir);
-  }, [captures, browseFilter, selectedTags, explorerSearch, sortField, sortDir, quickFilter, showFavOnly, favorites]);
+  }, [captures, browseFilter, selectedTags, sortField, sortDir, quickFilter, browseMode, favorites]);
+
+  // selectAll + bulk actions (need `filtered` in scope)
+  const selectAll = useCallback(() => {
+    const allIds = new Set(filtered.map((c) => c.id));
+    const allSelected = allIds.size > 0 && allIds.size === selectedIds.size && [...allIds].every((id) => selectedIds.has(id));
+    setSelectedIds(allSelected ? new Set() : allIds);
+  }, [filtered, selectedIds]);
+  const bulkArchive = useCallback(async () => {
+    for (const id of selectedIds) await archiveCapture(id);
+    setSelectedIds(new Set());
+    setConfirmAction(null);
+  }, [selectedIds, archiveCapture]);
+  const bulkUnarchive = useCallback(async () => {
+    for (const id of selectedIds) await unarchiveCapture(id);
+    setSelectedIds(new Set());
+    setConfirmAction(null);
+  }, [selectedIds, unarchiveCapture]);
+  const bulkDelete = useCallback(async () => {
+    for (const id of selectedIds) await deleteCapture(id);
+    setSelectedIds(new Set());
+    setConfirmAction(null);
+  }, [selectedIds, deleteCapture]);
+
+  // Clear selection when filters change
+  useEffect(() => { setSelectedIds(new Set()); }, [browseMode, browseFilter, selectedTags]);
 
   // ── Virtualization helpers ──
   const totalHeight = filtered.length * (ROW_H + ROW_GAP);
@@ -178,7 +209,7 @@ export default function BrowseView() {
   useEffect(() => {
     scrollRef.current?.scrollTo(0, 0);
     setScrollTop(0);
-  }, [browseFilter, selectedTags, explorerSearch, sortField, sortDir, quickFilter]);
+  }, [browseFilter, selectedTags, sortField, sortDir, quickFilter]);
 
   const count = filtered.length;
   const countLabel = `${count} capture${count !== 1 ? "s" : ""}`;
@@ -198,7 +229,7 @@ export default function BrowseView() {
       circle.style.height = `${size}px`;
       circle.style.left = `${x - size / 2}px`;
       circle.style.top = `${y - size / 2}px`;
-      circle.style.background = "rgba(255,255,255,0.3)";
+      circle.style.background = "var(--bg-card-soft)";
       btn.appendChild(circle);
       setTimeout(() => circle.remove(), 600);
     }
@@ -241,7 +272,7 @@ export default function BrowseView() {
       <div style={S.toolbar}>
         {/* Search — takes remaining space */}
         <div style={S.filterWrap}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#B0A99C" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text-dimmed)" strokeWidth="1.5" style={{ flexShrink: 0 }}>
             <circle cx="7" cy="7" r="4.5" /><line x1="10.2" y1="10.2" x2="14" y2="14" />
           </svg>
           <input
@@ -261,27 +292,52 @@ export default function BrowseView() {
         </div>
 
         {/* Sort dropdown */}
-        <SortDropdown field={sortField} dir={sortDir} onSort={toggleSort} />
+        <SortDropdown field={sortField} dir={sortDir} onSort={setSort} />
 
-        {/* Favorites toggle */}
+        {/* Mode toggles — mutually exclusive: Active / Favorites / Archived */}
         <button
-          onClick={() => setShowFavOnly((p) => !p)}
-          title={showFavOnly ? "Show all captures" : "Show favorites only"}
+          onClick={() => setBrowseMode((p) => p === "favorites" ? "active" : "favorites")}
+          title={browseMode === "favorites" ? "Show all captures" : "Show favorites only"}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: 30, height: 30,
-            border: `1px solid ${showFavOnly ? "#E0C4B5" : "#E5E0D6"}`,
-            background: showFavOnly ? "#FBF3EE" : "#FDFCF9",
+            border: `1px solid ${browseMode === "favorites" ? "var(--border-subtle)" : "var(--border)"}`,
+            background: browseMode === "favorites" ? "var(--accent-bg)" : "var(--bg-surface)",
             borderRadius: 7, cursor: "pointer",
             transition: "all .15s",
           }}
         >
           <svg width="14" height="14" viewBox="0 0 14 14"
-            fill={showFavOnly ? "#BD6A47" : "none"}
-            stroke={showFavOnly ? "none" : "#9A968B"}
+            fill={browseMode === "favorites" ? "var(--accent)" : "none"}
+            stroke={browseMode === "favorites" ? "none" : "var(--text-faint)"}
             strokeWidth="1.2"
           >
             <path d="M7 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L7 10.43l-3.52 1.92.67-3.93L1.3 5.64l3.94-.57Z" />
+          </svg>
+        </button>
+
+        <button
+          onClick={() => setBrowseMode((p) => p === "archived" ? "active" : "archived")}
+          title={browseMode === "archived" ? "Show active captures" : "Show archived captures"}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 30, height: 30,
+            border: `1px solid ${browseMode === "archived" ? "var(--border-subtle)" : "var(--border)"}`,
+            background: browseMode === "archived" ? "var(--bg-elevated)" : "var(--bg-surface)",
+            borderRadius: 7, cursor: "pointer",
+            transition: "all .15s",
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16"
+            fill="none"
+            stroke={browseMode === "archived" ? "var(--accent-text)" : "var(--text-faint)"}
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="2" y="3" width="12" height="4" rx="1" />
+            <path d="M3 7v5a1 1 0 001 1h8a1 1 0 001-1V7" />
+            <line x1="6.5" y1="10" x2="9.5" y2="10" />
           </svg>
         </button>
 
@@ -300,6 +356,72 @@ export default function BrowseView() {
         </button>
       </div>
 
+      {/* ── Bulk action bar — icon-only, matches sidebar style ── */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 4,
+          padding: "4px 24px", flexShrink: 0,
+          background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)",
+        }}>
+          <span style={{
+            fontSize: 11, fontWeight: 500, color: "var(--text-muted)", flex: 1,
+            fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+          }}>
+            {selectedIds.size} selected
+          </span>
+          {/* Select all */}
+          <button onClick={selectAll} style={S.bulkIconBtn} title="Select all">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="12" height="12" rx="2" /><polyline points="5,8 7,10 11,6" />
+            </svg>
+          </button>
+          {/* Deselect all */}
+          <button onClick={clearSelection} style={S.bulkIconBtn} title="Deselect all">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round">
+              <rect x="2" y="2" width="12" height="12" rx="2" /><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />
+            </svg>
+          </button>
+          {browseMode !== "archived" && (
+            <button onClick={() => setConfirmAction("archive")} style={S.bulkIconBtn} title="Archive selected">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round">
+                <rect x="2" y="2" width="12" height="4" rx="1" /><path d="M3 6v7a1 1 0 001 1h8a1 1 0 001-1V6" /><path d="M6.5 9h3" />
+              </svg>
+            </button>
+          )}
+          {browseMode === "archived" && (
+            <>
+              <button onClick={() => setConfirmAction("unarchive")} style={S.bulkIconBtn} title="Restore selected">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round">
+                  <rect x="2" y="2" width="12" height="4" rx="1" /><path d="M3 6v7a1 1 0 001 1h8a1 1 0 001-1V6" /><path d="M8 9V12M6.5 10.5L8 12l1.5-1.5" />
+                </svg>
+              </button>
+              <button onClick={() => setConfirmAction("delete")} style={{ ...S.bulkIconBtn, }} title="Delete selected">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--danger)" strokeWidth="1.4" strokeLinecap="round">
+                  <path d="M3 4h10M5.5 4V3h5v1M5 4v8.5h6V4" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Confirm dialog ── */}
+      {confirmAction === "archive" && (
+        <ConfirmDialog variant="archive" title={`Archive ${selectedIds.size} capture${selectedIds.size > 1 ? "s" : ""}?`}
+          onConfirm={() => { bulkArchive(); setConfirmAction(null); }}
+          onCancel={() => setConfirmAction(null)} />
+      )}
+      {confirmAction === "unarchive" && (
+        <ConfirmDialog variant="restore" title={`Restore ${selectedIds.size} capture${selectedIds.size > 1 ? "s" : ""} from archive?`}
+          onConfirm={() => { bulkUnarchive(); setConfirmAction(null); }}
+          onCancel={() => setConfirmAction(null)} />
+      )}
+      {confirmAction === "delete" && (
+        <ConfirmDialog variant="delete" title={`Delete ${selectedIds.size} capture${selectedIds.size > 1 ? "s" : ""}?`}
+          onConfirm={() => { bulkDelete(); setConfirmAction(null); }}
+          onCancel={() => setConfirmAction(null)} />
+      )}
+
       {/* ── Content ── */}
       {viewMode === "list" ? (
         <ListView
@@ -316,12 +438,14 @@ export default function BrowseView() {
           favorite={favorite}
           unfavorite={unfavorite}
           deleteCapture={deleteCapture}
+          archiveCapture={archiveCapture}
+          unarchiveCapture={unarchiveCapture}
+          isArchiveView={browseMode === "archived"}
           onCopy={handleCopy}
           onEdit={handleEdit}
           onAddToChat={handleAddToChat}
-          sortField={sortField}
-          sortDir={sortDir}
-          toggleSort={toggleSort}
+          selectedIds={selectedIds}
+          toggleSelect={toggleSelect}
         />
       ) : (
         <GridView
@@ -333,10 +457,15 @@ export default function BrowseView() {
           favorite={favorite}
           unfavorite={unfavorite}
           deleteCapture={deleteCapture}
+          archiveCapture={archiveCapture}
+          unarchiveCapture={unarchiveCapture}
+          isArchiveView={browseMode === "archived"}
           onCopy={handleCopy}
           onEdit={handleEdit}
           onAddToChat={handleAddToChat}
           captureCache={captureCache}
+          selectedIds={selectedIds}
+          toggleSelect={toggleSelect}
         />
       )}
 
@@ -361,23 +490,28 @@ interface ListProps {
   favorite: (id: string) => void;
   unfavorite: (id: string) => void;
   deleteCapture: (id: string) => Promise<void>;
+  archiveCapture: (id: string) => Promise<void>;
+  unarchiveCapture: (id: string) => Promise<void>;
+  isArchiveView: boolean;
   onCopy: (id: string) => void;
   onEdit: (id: string) => void;
   onAddToChat: (id: string) => void;
-  sortField: SortField;
-  sortDir: SortDir;
-  toggleSort: (field: SortField) => void;
+  selectedIds: Set<string>;
+  toggleSelect: (id: string) => void;
 }
 
 function ListView({
   items, scrollRef, onScroll, totalHeight, startIdx, endIdx,
   menuOpenId, setMenuOpenId,
   openDetail, favorites, favorite, unfavorite, deleteCapture,
+  archiveCapture, unarchiveCapture, isArchiveView,
   onCopy, onEdit, onAddToChat,
+  selectedIds, toggleSelect,
 }: ListProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const selectedId = useStore((s) => s.selectedId);
   const detailOpen = useStore((s) => s.detailOpen);
+  const anySelected = selectedIds.size > 0;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -385,7 +519,7 @@ function ListView({
       <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto" }}>
         <div style={{ position: "relative", height: totalHeight }}>
           {items.length === 0 && (
-            <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13, color: "#B0A99C" }}>
+            <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13, color: "var(--text-dimmed)" }}>
               No captures match this filter.
             </div>
           )}
@@ -394,11 +528,14 @@ function ListView({
             const isHovered = hoveredId === c.id;
             const isMenuOpen = menuOpenId === c.id;
             const isFav = favorites.includes(c.id);
+            const isSelected = selectedIds.has(c.id);
+            const showCheckbox = anySelected || isHovered;
             return (
               <div
                 key={c.id}
                 onClick={() => {
                   if (menuOpenId) { setMenuOpenId(null); return; }
+                  if (anySelected) { toggleSelect(c.id); return; }
                   openDetail(c.id);
                 }}
                 onMouseEnter={() => setHoveredId(c.id)}
@@ -412,18 +549,40 @@ function ListView({
                   alignItems: "center",
                   padding: "0 24px",
                   cursor: "pointer",
-                  background: isHovered || isMenuOpen ? "#FAF7F2" : "transparent",
-                  borderBottom: "1px solid #F0EBE2",
+                  background: isSelected ? "var(--accent-bg)" : (isHovered || isMenuOpen ? "var(--bg-surface)" : "transparent"),
+                  borderBottom: "1px solid var(--bg-hover)",
                   transition: "background .1s",
                   gap: 12,
                 }}
               >
+                {/* Selection checkbox */}
+                <div
+                  onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }}
+                  style={{
+                    width: 18, height: 18, flexShrink: 0,
+                    borderRadius: 4,
+                    border: `1.5px solid ${isSelected ? "var(--accent)" : "var(--text-ghost)"}`,
+                    background: isSelected ? "var(--accent)" : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer",
+                    opacity: showCheckbox ? 1 : 0,
+                    transition: "opacity .12s, background .12s, border-color .12s",
+                    marginRight: -4,
+                  }}
+                >
+                  {isSelected && (
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="var(--bg-card)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="2.5,6 5,8.5 9.5,3.5" />
+                    </svg>
+                  )}
+                </div>
+
                 {/* Thumbnail / doc icon */}
                 <div style={{
                   width: 40, height: 32, flexShrink: 0,
                   background: getColorMeta(c.color).bg, borderRadius: 6,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "#8A8579",
+                  color: "var(--text-muted)",
                 }}>
                   {c.icon ? (
                     <span style={{ fontSize: 16, lineHeight: 1 }}>{c.icon}</span>
@@ -446,7 +605,7 @@ function ListView({
                     externalHover={isHovered}
                     always={detailOpen && selectedId === c.id}
                     style={{
-                      fontSize: 13.5, fontWeight: 500, color: "#21201C",
+                      fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)",
                       lineHeight: 1.3,
                       fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
                     }}
@@ -457,7 +616,7 @@ function ListView({
                         <span key={tag} style={S.tag}>{tag}</span>
                       ))}
                       {c.tags.length > 2 && (
-                        <span style={{ ...S.tag, color: "#B0A99C", background: "transparent" }}>+{c.tags.length - 2}</span>
+                        <span style={{ ...S.tag, color: "var(--text-dimmed)", background: "transparent" }}>+{c.tags.length - 2}</span>
                       )}
                     </div>
                   )}
@@ -465,7 +624,7 @@ function ListView({
 
                 {/* Date */}
                 <div style={{
-                  flexShrink: 0, fontSize: 12, color: "#B0A99C",
+                  flexShrink: 0, fontSize: 12, color: "var(--text-dimmed)",
                   whiteSpace: "nowrap", minWidth: 56, textAlign: "right",
                 }}>
                   {relativeTime(c.date)}
@@ -477,11 +636,11 @@ function ListView({
                 }}>
                   <div style={{
                     width: 22, height: 22, borderRadius: "50%",
-                    background: "#BD6A47", color: "#FFF",
+                    background: "var(--accent)", color: "var(--bg-card)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 10, fontWeight: 600,
                   }}>A</div>
-                  <span style={{ fontSize: 12, color: "#7C7468" }}>You</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>You</span>
                 </div>
 
                 {/* Action buttons — visible on hover */}
@@ -496,7 +655,7 @@ function ListView({
                     title="Copy"
                     style={{
                       width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
-                      border: "none", background: "transparent", color: "#9A968B",
+                      border: "none", background: "transparent", color: "var(--text-faint)",
                       borderRadius: 5, cursor: "pointer",
                     }}
                   >
@@ -510,8 +669,12 @@ function ListView({
                     isOpen={isMenuOpen}
                     onToggle={() => setMenuOpenId(isMenuOpen ? null : c.id)}
                     isFavorited={isFav}
+                    isArchived={c.status === "archived"}
+                    isArchiveView={isArchiveView}
                     onFavorite={() => { favorite(c.id); setMenuOpenId(null); }}
                     onUnfavorite={() => { unfavorite(c.id); setMenuOpenId(null); }}
+                    onArchive={() => { archiveCapture(c.id); setMenuOpenId(null); }}
+                    onUnarchive={() => { unarchiveCapture(c.id); setMenuOpenId(null); }}
                     onCopy={() => { onCopy(c.id); setMenuOpenId(null); }}
                     onEdit={() => { onEdit(c.id); setMenuOpenId(null); }}
                     onAddToChat={() => { onAddToChat(c.id); setMenuOpenId(null); }}
@@ -525,12 +688,12 @@ function ListView({
                     style={{
                       width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
                       border: "none", background: "transparent",
-                      color: isFav ? "#BD6A47" : "#9A968B",
+                      color: isFav ? "var(--accent)" : "var(--text-faint)",
                       borderRadius: 5, cursor: "pointer",
                     }}
                   >
                     <svg width="13" height="13" viewBox="0 0 14 14"
-                      fill={isFav ? "#BD6A47" : "none"}
+                      fill={isFav ? "var(--accent)" : "none"}
                       stroke={isFav ? "none" : "currentColor"}
                       strokeWidth="1.2"
                     >
@@ -559,25 +722,33 @@ interface GridProps {
   favorite: (id: string) => void;
   unfavorite: (id: string) => void;
   deleteCapture: (id: string) => Promise<void>;
+  archiveCapture: (id: string) => Promise<void>;
+  unarchiveCapture: (id: string) => Promise<void>;
+  isArchiveView: boolean;
   onCopy: (id: string) => void;
   onEdit: (id: string) => void;
   onAddToChat: (id: string) => void;
   captureCache: Record<string, unknown>;
+  selectedIds: Set<string>;
+  toggleSelect: (id: string) => void;
 }
 
 function GridView({
   items, menuOpenId, setMenuOpenId,
   openDetail, favorites, favorite, unfavorite, deleteCapture,
+  archiveCapture, unarchiveCapture, isArchiveView,
   onCopy, onEdit, onAddToChat,
+  selectedIds, toggleSelect,
 }: GridProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const selectedId = useStore((s) => s.selectedId);
   const detailOpen = useStore((s) => s.detailOpen);
+  const anySelected = selectedIds.size > 0;
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px 32px" }}>
       {items.length === 0 && (
-        <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13, color: "#B0A99C" }}>
+        <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13, color: "var(--text-dimmed)" }}>
           No captures match this filter.
         </div>
       )}
@@ -591,29 +762,54 @@ function GridView({
           const isMenuOpen = menuOpenId === c.id;
           const isFav = favorites.includes(c.id);
           const snippet = c.summary || "";
+          const isSelected = selectedIds.has(c.id);
+          const showCheckbox = anySelected || isHovered;
 
           return (
             <div
               key={c.id}
               onClick={() => {
                 if (menuOpenId) { setMenuOpenId(null); return; }
+                if (anySelected) { toggleSelect(c.id); return; }
                 openDetail(c.id);
               }}
               onMouseEnter={() => setHoveredId(c.id)}
               onMouseLeave={() => setHoveredId(null)}
               style={{
-                background: "#FFFFFF",
-                border: `1px solid ${isHovered ? "#D8D0C2" : "#E8E3D8"}`,
+                background: "var(--bg-card)",
+                border: `1px solid ${isSelected ? "var(--border-subtle)" : (isHovered ? "var(--border-subtle)" : "var(--border)")}`,
                 borderRadius: 14,
                 cursor: "pointer",
                 transition: "box-shadow .2s, border-color .2s, transform .2s",
-                boxShadow: isHovered ? "0 8px 28px rgba(40,36,28,.09)" : "none",
-                transform: isHovered ? "translateY(-3px)" : "none",
+                boxShadow: isSelected ? "0 0 0 2px rgba(var(--shadow-accent), .15)" : (isHovered ? "0 8px 28px rgba(var(--shadow-color), .09)" : "none"),
+                transform: isHovered && !isSelected ? "translateY(-3px)" : "none",
                 display: "flex",
                 flexDirection: "column",
                 position: "relative",
               }}
             >
+              {/* Selection checkbox — top-left of card */}
+              <div
+                onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }}
+                style={{
+                  position: "absolute", top: 8, left: 8, zIndex: 10,
+                  width: 20, height: 20, borderRadius: 5,
+                  border: `1.5px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
+                  background: isSelected ? "var(--accent)" : "var(--bg-card-translucent)",
+                  backdropFilter: "blur(4px)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer",
+                  opacity: showCheckbox ? 1 : 0,
+                  transition: "opacity .12s, background .12s, border-color .12s",
+                }}
+              >
+                {isSelected && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--bg-card)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="2.5,6 5,8.5 9.5,3.5" />
+                  </svg>
+                )}
+              </div>
+
               {/* Preview area — neutral warm with doc text preview */}
               <div style={{
                 height: 170, background: getColorMeta(c.color).bg,
@@ -625,7 +821,7 @@ function GridView({
                 {snippet ? (
                   <div style={{
                     position: "absolute", inset: 16, top: 18,
-                    fontSize: 10, lineHeight: "15px", color: "#8A8579",
+                    fontSize: 10, lineHeight: "15px", color: "var(--text-muted)",
                     opacity: 0.3, overflow: "hidden",
                     fontFamily: "'SF Mono', 'Fira Code', monospace",
                     wordBreak: "break-word",
@@ -638,10 +834,10 @@ function GridView({
                 {/* Centered document icon */}
                 <div style={{
                   width: 48, height: 48, borderRadius: 12,
-                  background: "rgba(255,255,255,.55)",
+                  background: "var(--bg-card-soft)",
                   backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "#8A8579", zIndex: 1,
+                  color: "var(--text-muted)", zIndex: 1,
                 }}>
                   {c.icon ? (
                     <span style={{ fontSize: 28, lineHeight: 1 }}>{c.icon}</span>
@@ -666,8 +862,12 @@ function GridView({
                   isOpen={isMenuOpen}
                   onToggle={() => setMenuOpenId(isMenuOpen ? null : c.id)}
                   isFavorited={isFav}
+                  isArchived={c.status === "archived"}
+                  isArchiveView={isArchiveView}
                   onFavorite={() => { favorite(c.id); setMenuOpenId(null); }}
                   onUnfavorite={() => { unfavorite(c.id); setMenuOpenId(null); }}
+                  onArchive={() => { archiveCapture(c.id); setMenuOpenId(null); }}
+                  onUnarchive={() => { unarchiveCapture(c.id); setMenuOpenId(null); }}
                   onCopy={() => { onCopy(c.id); setMenuOpenId(null); }}
                   onEdit={() => { onEdit(c.id); setMenuOpenId(null); }}
                   onAddToChat={() => { onAddToChat(c.id); setMenuOpenId(null); }}
@@ -678,13 +878,13 @@ function GridView({
                   title={isFav ? "Unfavorite" : "Favorite"}
                   style={{
                     width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
-                    border: "none", background: "rgba(255,255,255,.85)", backdropFilter: "blur(4px)",
-                    color: isFav ? "#BD6A47" : "#7C7468",
+                    border: "none", background: "var(--bg-card-translucent)", backdropFilter: "blur(4px)",
+                    color: isFav ? "var(--accent)" : "var(--text-muted)",
                     borderRadius: 6, cursor: "pointer",
                   }}
                 >
                   <svg width="12" height="12" viewBox="0 0 14 14"
-                    fill={isFav ? "#BD6A47" : "none"}
+                    fill={isFav ? "var(--accent)" : "none"}
                     stroke={isFav ? "none" : "currentColor"}
                     strokeWidth="1.3"
                   >
@@ -700,7 +900,7 @@ function GridView({
                   externalHover={isHovered}
                   always={detailOpen && selectedId === c.id}
                   style={{
-                    fontSize: 14.5, fontWeight: 600, color: "#21201C",
+                    fontSize: 14.5, fontWeight: 600, color: "var(--text-primary)",
                     lineHeight: "20px",
                     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
                   }}
@@ -709,7 +909,7 @@ function GridView({
                 {/* Snippet */}
                 {snippet && (
                   <span style={{
-                    fontSize: 12, lineHeight: "17px", color: "#8A8579",
+                    fontSize: 12, lineHeight: "17px", color: "var(--text-muted)",
                     display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
                     overflow: "hidden", textOverflow: "ellipsis",
                   }}>{snippet}</span>
@@ -720,12 +920,12 @@ function GridView({
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
                     {c.tags.slice(0, 3).map((tag) => (
                       <span key={tag} style={{
-                        fontSize: 10, color: "#9A958A", background: "#F5F3ED",
+                        fontSize: 10, color: "var(--text-faint)", background: "var(--bg-elevated)",
                         borderRadius: 4, padding: "1px 6px", fontWeight: 500,
                       }}>#{tag}</span>
                     ))}
                     {c.tags.length > 3 && (
-                      <span style={{ fontSize: 10, color: "#B0A99C" }}>+{c.tags.length - 3}</span>
+                      <span style={{ fontSize: 10, color: "var(--text-dimmed)" }}>+{c.tags.length - 3}</span>
                     )}
                   </div>
                 )}
@@ -734,13 +934,13 @@ function GridView({
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                   <div style={{
                     width: 20, height: 20, borderRadius: "50%",
-                    background: "#E8E5DD", color: "#7C7468",
+                    background: "var(--bg-badge)", color: "var(--text-muted)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 9, fontWeight: 600, flexShrink: 0,
                   }}>Y</div>
-                  <span style={{ fontSize: 11.5, color: "#B0A99C", fontWeight: 450 }}>You</span>
-                  <span style={{ fontSize: 11.5, color: "#C4BEB2" }}>·</span>
-                  <span style={{ fontSize: 11.5, color: "#B0A99C" }}>{relativeTime(c.date)}</span>
+                  <span style={{ fontSize: 11.5, color: "var(--text-dimmed)", fontWeight: 450 }}>You</span>
+                  <span style={{ fontSize: 11.5, color: "var(--text-ghost)" }}>·</span>
+                  <span style={{ fontSize: 11.5, color: "var(--text-dimmed)" }}>{relativeTime(c.date)}</span>
                 </div>
               </div>
             </div>
@@ -763,7 +963,7 @@ const SORT_OPTIONS: { field: SortField; dir: SortDir; label: string }[] = [
 
 function SortDropdown({ field, dir, onSort }: {
   field: SortField; dir: SortDir;
-  onSort: (f: SortField) => void;
+  onSort: (f: SortField, d: SortDir) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -787,9 +987,9 @@ function SortDropdown({ field, dir, onSort }: {
         onClick={() => setOpen((p) => !p)}
         style={{
           display: "flex", alignItems: "center", gap: 5,
-          border: "1px solid #E5E0D6", background: "#FDFCF9",
+          border: "1px solid var(--border)", background: "var(--bg-surface)",
           borderRadius: 7, padding: "5px 10px", fontSize: 12,
-          color: "#5C584E", cursor: "pointer",
+          color: "var(--text-secondary)", cursor: "pointer",
           fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
           transition: "all .15s",
           whiteSpace: "nowrap" as const,
@@ -807,8 +1007,8 @@ function SortDropdown({ field, dir, onSort }: {
       {open && (
         <div style={{
           position: "absolute", top: "calc(100% + 4px)", left: 0,
-          background: "#FFFFFF", border: "1px solid #E5E0D6", borderRadius: 10,
-          boxShadow: "0 8px 28px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06)",
+          background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10,
+          boxShadow: "0 8px 28px rgba(var(--shadow-color), .12), 0 2px 8px rgba(var(--shadow-color), .06)",
           padding: 4, zIndex: 50, minWidth: 160,
           animation: "scaleIn .12s ease-out",
         }}>
@@ -818,26 +1018,21 @@ function SortDropdown({ field, dir, onSort }: {
               <button
                 key={`${opt.field}-${opt.dir}`}
                 onClick={() => {
-                  if (opt.field !== field) {
-                    onSort(opt.field);
-                    // If switching fields, we might need a second toggle for dir
-                  } else if (opt.dir !== dir) {
-                    onSort(opt.field); // toggles direction
-                  }
+                  onSort(opt.field, opt.dir);
                   setOpen(false);
                 }}
                 style={{
                   display: "flex", alignItems: "center", gap: 8, width: "100%",
-                  border: "none", background: active ? "#F5F2EC" : "transparent",
+                  border: "none", background: active ? "var(--bg-elevated)" : "transparent",
                   borderRadius: 7, padding: "7px 10px", fontSize: 12.5,
-                  color: active ? "#21201C" : "#56524A",
+                  color: active ? "var(--text-primary)" : "var(--text-secondary)",
                   fontWeight: active ? 500 : 400,
                   cursor: "pointer", textAlign: "left",
                   fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
                   transition: "background .1s",
                 }}
               >
-                <span style={{ width: 14, fontSize: 11, color: "#BD6A47" }}>
+                <span style={{ width: 14, fontSize: 11, color: "var(--accent)" }}>
                   {active ? "✓" : ""}
                 </span>
                 {opt.label}
@@ -853,12 +1048,16 @@ function SortDropdown({ field, dir, onSort }: {
 /* ════════════════════════════════════════════════════════════════
    CaptureMenu — 3-dot dropdown with quick actions
    ════════════════════════════════════════════════════════════════ */
-function CaptureMenu({ isOpen, onToggle, isFavorited, onFavorite, onUnfavorite, onCopy, onEdit, onAddToChat, onDelete }: {
+function CaptureMenu({ isOpen, onToggle, isFavorited, isArchived, isArchiveView, onFavorite, onUnfavorite, onArchive, onUnarchive, onCopy, onEdit, onAddToChat, onDelete }: {
   isOpen: boolean;
   onToggle: () => void;
   isFavorited: boolean;
+  isArchived: boolean;
+  isArchiveView: boolean;
   onFavorite: () => void;
   onUnfavorite: () => void;
+  onArchive: () => void;
+  onUnarchive: () => void;
   onCopy: () => void;
   onEdit: () => void;
   onAddToChat: () => void;
@@ -879,8 +1078,8 @@ function CaptureMenu({ isOpen, onToggle, isFavorited, onFavorite, onUnfavorite, 
         style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           width: 28, height: 28, border: "none", borderRadius: 7,
-          background: isOpen ? "#F0EBE2" : "transparent",
-          color: "#7C7468", cursor: "pointer", padding: 0,
+          background: isOpen ? "var(--bg-hover)" : "transparent",
+          color: "var(--text-muted)", cursor: "pointer", padding: 0,
           transition: "background .12s",
         }}
         title="Actions"
@@ -896,8 +1095,8 @@ function CaptureMenu({ isOpen, onToggle, isFavorited, onFavorite, onUnfavorite, 
         <div
           style={{
             position: "absolute", top: "calc(100% + 4px)", right: 0,
-            background: "#FFFFFF", border: "1px solid #E5E0D6", borderRadius: 10,
-            boxShadow: "0 8px 28px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06)",
+            background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10,
+            boxShadow: "0 8px 28px rgba(var(--shadow-color), .12), 0 2px 8px rgba(var(--shadow-color), .06)",
             padding: 4, zIndex: 50, minWidth: 160,
             animation: "scaleIn .12s ease-out",
           }}
@@ -907,7 +1106,7 @@ function CaptureMenu({ isOpen, onToggle, isFavorited, onFavorite, onUnfavorite, 
           <MenuItem
             icon={
               isFavorited
-                ? <svg width="14" height="14" viewBox="0 0 14 14" fill="#BD6A47" stroke="none"><path d="M7 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L7 10.43l-3.52 1.92.67-3.93L1.3 5.64l3.94-.57Z" /></svg>
+                ? <svg width="14" height="14" viewBox="0 0 14 14" fill="var(--accent)" stroke="none"><path d="M7 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L7 10.43l-3.52 1.92.67-3.93L1.3 5.64l3.94-.57Z" /></svg>
                 : <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M7 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L7 10.43l-3.52 1.92.67-3.93L1.3 5.64l3.94-.57Z" /></svg>
             }
             label={isFavorited ? "Unfavorite" : "Favorite"}
@@ -948,29 +1147,52 @@ function CaptureMenu({ isOpen, onToggle, isFavorited, onFavorite, onUnfavorite, 
           />
 
           {/* Separator */}
-          <div style={{ height: 1, background: "#E9E5DC", margin: "4px 6px" }} />
+          <div style={{ height: 1, background: "var(--border)", margin: "4px 6px" }} />
 
-          {/* Delete */}
-          {!deleteConfirm ? (
+          {/* Archive / Unarchive */}
+          {isArchived ? (
             <MenuItem
-              icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M3 4.5h10M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5M5 4.5l.5 8.5h5l.5-8.5" /></svg>}
-              label="Delete"
-              destructive
-              hovered={hovered === "del"}
-              onHover={() => setHovered("del")}
+              icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v5a1 1 0 001 1h8a1 1 0 001-1V7" /><polyline points="6 9 8 7 10 9" /><rect x="2" y="3" width="12" height="4" rx="1" /></svg>}
+              label="Restore"
+              hovered={hovered === "unarchive"}
+              onHover={() => setHovered("unarchive")}
               onLeave={() => setHovered(null)}
-              onClick={() => setDeleteConfirm(true)}
+              onClick={onUnarchive}
             />
           ) : (
             <MenuItem
-              icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#C0392B" strokeWidth="1.6" strokeLinecap="round"><path d="M4 8h8" /><circle cx="8" cy="8" r="6" /></svg>}
-              label="Confirm delete?"
-              destructive
-              hovered={hovered === "confirm"}
-              onHover={() => setHovered("confirm")}
+              icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="12" height="4" rx="1" /><path d="M3 7v5a1 1 0 001 1h8a1 1 0 001-1V7" /><line x1="6.5" y1="10" x2="9.5" y2="10" /></svg>}
+              label="Archive"
+              hovered={hovered === "archive"}
+              onHover={() => setHovered("archive")}
               onLeave={() => setHovered(null)}
-              onClick={onDelete}
+              onClick={onArchive}
             />
+          )}
+
+          {/* Permanent delete — only in archive view */}
+          {isArchiveView && (
+            !deleteConfirm ? (
+              <MenuItem
+                icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M3 4.5h10M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5M5 4.5l.5 8.5h5l.5-8.5" /></svg>}
+                label="Delete permanently"
+                destructive
+                hovered={hovered === "del"}
+                onHover={() => setHovered("del")}
+                onLeave={() => setHovered(null)}
+                onClick={() => setDeleteConfirm(true)}
+              />
+            ) : (
+              <MenuItem
+                icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--danger-text)" strokeWidth="1.6" strokeLinecap="round"><path d="M4 8h8" /><circle cx="8" cy="8" r="6" /></svg>}
+                label="Confirm delete?"
+                destructive
+                hovered={hovered === "confirm"}
+                onHover={() => setHovered("confirm")}
+                onLeave={() => setHovered(null)}
+                onClick={onDelete}
+              />
+            )
           )}
         </div>
       )}
@@ -989,10 +1211,10 @@ function MenuItem({ icon, label, destructive, hovered, onHover, onLeave, onClick
   onClick: () => void;
 }) {
   const color = destructive
-    ? (hovered ? "#C0392B" : "#D4574A")
-    : (hovered ? "#21201C" : "#56524A");
+    ? (hovered ? "var(--danger-text)" : "var(--danger)")
+    : (hovered ? "var(--text-primary)" : "var(--text-secondary)");
   const bg = hovered
-    ? (destructive ? "#FDF2F0" : "#F5F2EC")
+    ? (destructive ? "var(--danger-bg)" : "var(--bg-elevated)")
     : "transparent";
 
   return (
@@ -1035,7 +1257,7 @@ function _ColumnHead({ label, field, active, dir, onToggle, flex, width, align }
         justifyContent: align === "right" ? "flex-end" : "flex-start",
         border: "none", background: "transparent", padding: 0,
         cursor: "pointer", fontSize: 11, fontWeight: 600,
-        color: isActive ? "#4A463E" : "#9A968B",
+        color: isActive ? "var(--text-heading)" : "var(--text-faint)",
         fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
         textAlign: "left",
         transition: "color .12s",
@@ -1058,16 +1280,16 @@ void _ColumnHead; // suppress unused warning
 /* View toggle (list / grid icons) */
 function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
   return (
-    <div style={{ display: "flex", gap: 2, background: "#F0EBE2", borderRadius: 7, padding: 2 }}>
+    <div style={{ display: "flex", gap: 2, background: "var(--bg-hover)", borderRadius: 7, padding: 2 }}>
       <button
         onClick={() => onChange("list")}
         title="List view"
         style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           width: 28, height: 26, border: "none", borderRadius: 5,
-          background: mode === "list" ? "#FFFFFF" : "transparent",
-          color: mode === "list" ? "#21201C" : "#9A968B",
-          boxShadow: mode === "list" ? "0 1px 3px rgba(0,0,0,.08)" : "none",
+          background: mode === "list" ? "var(--bg-card)" : "transparent",
+          color: mode === "list" ? "var(--text-primary)" : "var(--text-faint)",
+          boxShadow: mode === "list" ? "0 1px 3px rgba(var(--shadow-color), .08)" : "none",
           cursor: "pointer", transition: "all .12s",
         }}
       >
@@ -1081,9 +1303,9 @@ function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode
         style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           width: 28, height: 26, border: "none", borderRadius: 5,
-          background: mode === "grid" ? "#FFFFFF" : "transparent",
-          color: mode === "grid" ? "#21201C" : "#9A968B",
-          boxShadow: mode === "grid" ? "0 1px 3px rgba(0,0,0,.08)" : "none",
+          background: mode === "grid" ? "var(--bg-card)" : "transparent",
+          color: mode === "grid" ? "var(--text-primary)" : "var(--text-faint)",
+          boxShadow: mode === "grid" ? "0 1px 3px rgba(var(--shadow-color), .08)" : "none",
           cursor: "pointer", transition: "all .12s",
         }}
       >
@@ -1102,24 +1324,24 @@ function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode
 const S: Record<string, React.CSSProperties> = {
   heading: {
     margin: 0, fontFamily: "'Newsreader', Georgia, serif",
-    fontWeight: 500, fontSize: 20, color: "#21201C",
+    fontWeight: 500, fontSize: 20, color: "var(--text-primary)",
     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const,
     minWidth: 0,
   },
   count: {
-    fontSize: 12, color: "#B0A99C",
+    fontSize: 12, color: "var(--text-dimmed)",
     fontFamily: "ui-monospace, Menlo, monospace",
   },
   newBtn: {
     display: "flex", alignItems: "center", gap: 7,
-    border: "1px solid #D8C2B6", background: "#BD6A47",
-    color: "#FFFFFF", borderRadius: 9, padding: "7px 13px",
+    border: "1px solid var(--border-subtle)", background: "var(--accent)",
+    color: "var(--bg-card)", borderRadius: 9, padding: "7px 13px",
     fontSize: 13, fontWeight: 500, cursor: "pointer",
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
     transition: "all .15s ease",
     position: "relative" as const,
     overflow: "hidden" as const,
-    boxShadow: "0 1px 3px rgba(120,60,30,.25)",
+    boxShadow: "0 1px 3px rgba(var(--shadow-accent), .25)",
   },
   toolbar: {
     display: "flex", alignItems: "center", gap: 8,
@@ -1128,31 +1350,38 @@ const S: Record<string, React.CSSProperties> = {
   },
   filterWrap: {
     display: "flex", alignItems: "center", gap: 7,
-    background: "#FFFFFF", border: "1px solid #E5E0D6",
+    background: "var(--bg-card)", border: "1px solid var(--border)",
     borderRadius: 8, padding: "5px 10px",
     flex: 1, minWidth: 140,
   },
   filterInput: {
     border: "none", outline: "none", background: "transparent",
-    fontSize: 13, color: "#21201C", flex: 1, minWidth: 0,
+    fontSize: 13, color: "var(--text-primary)", flex: 1, minWidth: 0,
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
   },
   clearBtn: {
     display: "flex", border: "none", background: "transparent",
-    color: "#B0A99C", cursor: "pointer", padding: 2,
+    color: "var(--text-dimmed)", cursor: "pointer", padding: 2,
   },
   colHeader: {
     display: "flex", alignItems: "center", padding: "6px 20px",
-    borderBottom: "1px solid #E5E0D6", flexShrink: 0,
-    background: "#FDFCF9",
+    borderBottom: "1px solid var(--border)", flexShrink: 0,
+    background: "var(--bg-surface)",
   }, // kept for ColumnHead if ever needed
   tag: {
-    fontSize: 10, color: "#7C7468", background: "#F2EDE3",
+    fontSize: 10, color: "var(--text-muted)", background: "var(--bg-hover)",
     borderRadius: 4, padding: "1px 5px",
     fontFamily: "ui-monospace, Menlo, monospace",
     whiteSpace: "nowrap" as const,
     lineHeight: "1.4",
     flexShrink: 0,
   },
+  bulkIconBtn: {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    width: 26, height: 26,
+    border: "1px solid var(--border-subtle)", background: "var(--bg-card)",
+    borderRadius: 6, cursor: "pointer",
+    transition: "all .12s",
+  } as React.CSSProperties,
   // filterHeading moved inline into FilterSection component
 };

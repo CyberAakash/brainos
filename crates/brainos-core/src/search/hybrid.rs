@@ -50,11 +50,8 @@ pub fn search_hybrid(
     // If no vector or entity results, fall back to pure BM25 path
     if vec_results.is_empty() && entity_results.is_empty() {
         let mut results = bm25_only(store, &bm25_results, query, limit, half_life)?;
-        if !query.contains("include:expired") {
-            results.retain(|r| {
-                r.capture.status != CaptureStatus::Expired
-                    && r.capture.status != CaptureStatus::Archived
-            });
+        if !query.contains("include:archived") {
+            results.retain(|r| r.capture.status != CaptureStatus::Archived);
         }
         return Ok(results);
     }
@@ -88,12 +85,9 @@ pub fn search_hybrid(
     // 6. Hydrate results with temporal scoring
     let mut results = hydrate_results(store, &ranked, query, half_life)?;
 
-    // 7. Filter out Expired/Archived unless user opts in with "include:expired"
-    if !query.contains("include:expired") {
-        results.retain(|r| {
-            r.capture.status != CaptureStatus::Expired
-                && r.capture.status != CaptureStatus::Archived
-        });
+    // 7. Filter out Archived unless user opts in with "include:archived"
+    if !query.contains("include:archived") {
+        results.retain(|r| r.capture.status != CaptureStatus::Archived);
     }
 
     Ok(results)

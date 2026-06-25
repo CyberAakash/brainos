@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useStore, type Conversation } from "../../store";
 import MarqueeTitle from "./MarqueeTitle";
+import ConfirmDialog from "./ConfirmDialog";
 
 /* ── helpers ── */
 function relativeTime(ts: number): string {
@@ -35,36 +36,6 @@ function groupConversations(convos: Conversation[]) {
   return { pinned, today, week, older };
 }
 
-/* ── Confirmation dialog ── */
-function ConfirmDialog({ message, onConfirm, onCancel }: {
-  message: string; onConfirm: () => void; onCancel: () => void;
-}) {
-  return (
-    <>
-      <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.15)", zIndex: 999 }} />
-      <div style={{
-        position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-        background: "#FFFFFF", border: "1px solid #E0DAD0", borderRadius: 14,
-        padding: "20px 24px", zIndex: 1000, minWidth: 280, maxWidth: 360,
-        boxShadow: "0 12px 40px rgba(40,36,28,.15)", fontFamily: "inherit",
-      }}>
-        <p style={{ margin: "0 0 18px", fontSize: 14, color: "#3F3B33", lineHeight: 1.5 }}>{message}</p>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onCancel} style={{
-            padding: "7px 16px", borderRadius: 8, border: "1px solid #E0DAD0",
-            background: "#FFFFFF", color: "#56524A", fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-          }}>Cancel</button>
-          <button onClick={onConfirm} style={{
-            padding: "7px 16px", borderRadius: 8, border: "none",
-            background: "#C75A3A", color: "#FFFFFF", fontSize: 13, fontWeight: 600,
-            cursor: "pointer", fontFamily: "inherit",
-          }}>Confirm</button>
-        </div>
-      </div>
-    </>
-  );
-}
-
 /* ── Context menu ── */
 function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
   x: number; y: number; convo: Conversation; isArchiveView: boolean; onClose: () => void;
@@ -77,7 +48,7 @@ function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
   const deleteConversation = useStore((s) => s.deleteConversation);
   const showToast = useStore((s) => s.showToast);
 
-  const [confirm, setConfirm] = useState<"archive" | "delete" | null>(null);
+  const [confirm, setConfirm] = useState<"archive" | "unarchive" | "delete" | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(convo.title);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -85,12 +56,18 @@ function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
   useEffect(() => { if (renaming) renameRef.current?.focus(); }, [renaming]);
 
   if (confirm === "archive") {
-    return <ConfirmDialog message={`Archive "${convo.title}"?`}
+    return <ConfirmDialog variant="archive" title={`Archive "${convo.title}"?`}
       onConfirm={() => { archiveConversation(convo.id); showToast("Chat archived"); onClose(); }}
       onCancel={() => setConfirm(null)} />;
   }
+  if (confirm === "unarchive") {
+    return <ConfirmDialog variant="restore" title={`Restore "${convo.title}"?`}
+      body="This chat will be moved back to your active conversations."
+      onConfirm={() => { unarchiveConversation(convo.id); showToast("Chat restored"); onClose(); }}
+      onCancel={() => setConfirm(null)} />;
+  }
   if (confirm === "delete") {
-    return <ConfirmDialog message={`Permanently delete "${convo.title}"? This cannot be undone.`}
+    return <ConfirmDialog variant="delete" title={`Delete "${convo.title}"?`}
       onConfirm={() => { deleteConversation(convo.id); showToast("Chat deleted"); onClose(); }}
       onCancel={() => setConfirm(null)} />;
   }
@@ -100,8 +77,8 @@ function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
         <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
         <div style={{
           position: "fixed", top: y, left: x, zIndex: 1000,
-          background: "#FFFFFF", border: "1px solid #E0DAD0", borderRadius: 10,
-          padding: 8, boxShadow: "0 6px 20px rgba(40,36,28,.12)", minWidth: 200,
+          background: "var(--bg-card)", border: "1px solid var(--border-subtle)", borderRadius: 10,
+          padding: 8, boxShadow: "0 6px 20px rgba(var(--shadow-color), .12)", minWidth: 200,
         }}>
           <input ref={renameRef} value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
@@ -113,11 +90,11 @@ function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
               if (e.key === "Escape") onClose();
             }}
             style={{
-              width: "100%", border: "1px solid #E0DAD0", borderRadius: 6, padding: "5px 8px",
-              fontSize: 13, fontFamily: "inherit", outline: "none", color: "#21201C", boxSizing: "border-box",
+              width: "100%", border: "1px solid var(--border-subtle)", borderRadius: 6, padding: "5px 8px",
+              fontSize: 13, fontFamily: "inherit", outline: "none", color: "var(--text-primary)", boxSizing: "border-box",
             }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "#BD6A47"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = "#E0DAD0"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-subtle)"; }}
           />
         </div>
       </>
@@ -127,7 +104,7 @@ function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
   const items: { label: string; icon: string; action: () => void; danger?: boolean }[] = [];
   items.push({ label: "Rename", icon: "edit", action: () => setRenaming(true) });
   if (isArchiveView) {
-    items.push({ label: "Unarchive", icon: "unarchive", action: () => { unarchiveConversation(convo.id); showToast("Chat restored"); onClose(); } });
+    items.push({ label: "Unarchive", icon: "unarchive", action: () => setConfirm("unarchive") });
     items.push({ label: "Delete permanently", icon: "trash", action: () => setConfirm("delete"), danger: true });
   } else {
     if (convo.pinned) {
@@ -143,17 +120,17 @@ function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
       <div style={{
         position: "fixed", top: y, left: x, zIndex: 1000,
-        background: "#FFFFFF", border: "1px solid #E0DAD0", borderRadius: 10,
-        boxShadow: "0 6px 20px rgba(40,36,28,.12)", overflow: "hidden", minWidth: 170,
+        background: "var(--bg-card)", border: "1px solid var(--border-subtle)", borderRadius: 10,
+        boxShadow: "0 6px 20px rgba(var(--shadow-color), .12)", overflow: "hidden", minWidth: 170,
       }}>
         {items.map((item, i) => (
           <button key={i} onClick={item.action} style={{
             width: "100%", display: "flex", alignItems: "center", gap: 8,
             padding: "8px 12px", border: "none", background: "transparent",
             cursor: "pointer", fontSize: 12.5, fontFamily: "inherit", textAlign: "left",
-            color: item.danger ? "#C75A3A" : "#4A463E", transition: "background .08s",
+            color: item.danger ? "var(--danger)" : "var(--text-heading)", transition: "background .08s",
           }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = item.danger ? "#FEF3F0" : "#FAF8F3"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = item.danger ? "var(--accent-bg)" : "var(--bg-surface)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
             <MenuIcon name={item.icon} danger={item.danger} />
@@ -167,7 +144,7 @@ function ContextMenu({ x, y, convo, isArchiveView, onClose }: {
 
 /* ── SVG icons for context menu ── */
 function MenuIcon({ name, danger }: { name: string; danger?: boolean }) {
-  const stroke = danger ? "#C75A3A" : "#8A8578";
+  const stroke = danger ? "var(--danger)" : "var(--text-muted)";
   const s = { width: 14, height: 14, flexShrink: 0 as const };
   switch (name) {
     case "edit": return <svg {...s} viewBox="0 0 16 16" fill="none" stroke={stroke} strokeWidth="1.3" strokeLinecap="round"><path d="M10 3l3 3L6 13H3v-3z" /></svg>;
@@ -191,63 +168,63 @@ function HoverPopover({ convo, anchorRect }: { convo: Conversation; anchorRect: 
     .filter(Boolean);
 
   // Position: to the right of the sidebar, vertically aligned with the row
-  const top = Math.min(anchorRect.top, window.innerHeight - 240);
-  const left = anchorRect.right + 8;
+  const top = Math.min(anchorRect.top, window.innerHeight - 200);
+  const left = anchorRect.right + 6;
 
   return (
     <div style={{
       position: "fixed", top, left, zIndex: 800, pointerEvents: "none",
-      width: 280, background: "#FFFFFF",
-      border: "1px solid #E7E1D6", borderRadius: 12,
-      boxShadow: "0 8px 30px rgba(40,36,28,.12), 0 1px 3px rgba(40,36,28,.06)",
-      padding: "14px 16px", fontFamily: "inherit",
+      width: 240, background: "var(--bg-card)",
+      border: "1px solid var(--border)", borderRadius: 10,
+      boxShadow: "0 6px 24px rgba(var(--shadow-color), .1), 0 1px 3px rgba(var(--shadow-color), .05)",
+      padding: "10px 12px", fontFamily: "inherit",
       animation: "fadeIn .12s ease",
     }}>
       {/* Title */}
       <div style={{
-        fontSize: 13, fontWeight: 600, color: "#21201C", marginBottom: 10,
+        fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8,
         overflow: "hidden", textOverflow: "ellipsis",
         display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
         lineHeight: 1.4,
       }}>{convo.title}</div>
 
       {/* Meta rows */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {/* Branch-style row: message count */}
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#A8A194" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--text-dimmed)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <path d="M2 3h12v8H5l-3 3V3z" />
           </svg>
-          <span style={{ fontSize: 12, color: "#7C7468" }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
             {userMsgs} message{userMsgs !== 1 ? "s" : ""} · {aiMsgs} response{aiMsgs !== 1 ? "s" : ""}
           </span>
         </div>
 
         {/* Time row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#A8A194" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--text-dimmed)" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
             <circle cx="8" cy="8" r="6" /><path d="M8 5v3.5l2.5 1.5" />
           </svg>
-          <span style={{ fontSize: 12, color: "#7C7468" }}>{formatDate(convo.createdAt)}</span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatDate(convo.createdAt)}</span>
         </div>
 
         {/* Attached captures */}
         {attachedCaptures.length > 0 && (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#A8A194" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--text-dimmed)" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
               <path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z" />
               <path d="M9 2v4h4" />
             </svg>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
               {attachedCaptures.slice(0, 3).map((c) => (
                 <span key={c!.id} style={{
-                  fontSize: 11, color: "#9A4F30", background: "#F8EDE6",
-                  borderRadius: 4, padding: "1px 6px", maxWidth: 120,
+                  fontSize: 10, color: "var(--accent-text)", background: "var(--accent-bg)",
+                  borderRadius: 3, padding: "1px 5px", maxWidth: 100,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>{c!.title}</span>
               ))}
               {attachedCaptures.length > 3 && (
-                <span style={{ fontSize: 11, color: "#A8A194" }}>+{attachedCaptures.length - 3}</span>
+                <span style={{ fontSize: 10, color: "var(--text-dimmed)" }}>+{attachedCaptures.length - 3}</span>
               )}
             </div>
           </div>
@@ -257,8 +234,8 @@ function HoverPopover({ convo, anchorRect }: { convo: Conversation; anchorRect: 
       {/* First message preview */}
       {firstUserMsg && (
         <div style={{
-          marginTop: 10, paddingTop: 10, borderTop: "1px solid #F0EDE6",
-          fontSize: 12, color: "#A8A194", lineHeight: 1.45,
+          marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--bg-input)",
+          fontSize: 11, color: "var(--text-dimmed)", lineHeight: 1.4,
           overflow: "hidden", textOverflow: "ellipsis",
           display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const,
         }}>{firstUserMsg}</div>
@@ -266,21 +243,21 @@ function HoverPopover({ convo, anchorRect }: { convo: Conversation; anchorRect: 
 
       {/* Stats badge (like +12277 -67) — show message/context counts */}
       <div style={{
-        display: "flex", justifyContent: "flex-end", marginTop: 10, gap: 6,
+        display: "flex", justifyContent: "flex-end", marginTop: 8, gap: 4,
       }}>
         {convo.pinned && (
           <span style={{
-            fontSize: 10, fontWeight: 600, color: "#BD6A47", background: "#F8EDE6",
+            fontSize: 10, fontWeight: 600, color: "var(--accent)", background: "var(--accent-bg)",
             borderRadius: 4, padding: "2px 6px",
           }}>Pinned</span>
         )}
         <span style={{
-          fontSize: 10, fontWeight: 600, color: "#6B8F71", background: "#EDF5EE",
+          fontSize: 10, fontWeight: 600, color: "var(--green-dot)", background: "var(--status-active-bg)",
           borderRadius: 4, padding: "2px 6px",
         }}>+{convo.messages.length}</span>
         {convo.attached.length > 0 && (
           <span style={{
-            fontSize: 10, fontWeight: 600, color: "#7A6F62", background: "#F0EDE6",
+            fontSize: 10, fontWeight: 600, color: "var(--text-muted)", background: "var(--bg-input)",
             borderRadius: 4, padding: "2px 6px",
           }}>{convo.attached.length} ctx</span>
         )}
@@ -315,6 +292,7 @@ export default function ChatHistorySidebar() {
   const [search, setSearch] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; convo: Conversation } | null>(null);
   const [confirm, setConfirm] = useState<"archive" | "unarchive" | "delete" | null>(null);
+  const [inlineConfirm, setInlineConfirm] = useState<{ id: string; title: string; action: "archive" | "delete" } | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const multiSelectActive = selectedIds.length > 0;
@@ -349,29 +327,52 @@ export default function ChatHistorySidebar() {
     }
   }, []);
 
-  const handleSelectAll = () => selectAllConvos(visibleConvos.map((c) => c.id));
-
-  // Batch confirm
-  if (confirm === "archive") {
-    return <ConfirmDialog message={`Archive ${selectedIds.length} chat${selectedIds.length > 1 ? "s" : ""}?`}
-      onConfirm={() => { archiveSelectedConvos(); showToast(`${selectedIds.length} chat(s) archived`); setConfirm(null); }}
-      onCancel={() => setConfirm(null)} />;
-  }
-  if (confirm === "unarchive") {
-    return <ConfirmDialog message={`Restore ${selectedIds.length} chat${selectedIds.length > 1 ? "s" : ""} from archive?`}
-      onConfirm={() => { unarchiveSelectedConvos(); showToast(`${selectedIds.length} chat(s) restored`); setConfirm(null); }}
-      onCancel={() => setConfirm(null)} />;
-  }
-  if (confirm === "delete") {
-    return <ConfirmDialog message={`Permanently delete ${selectedIds.length} chat${selectedIds.length > 1 ? "s" : ""}? This cannot be undone.`}
-      onConfirm={() => { deleteSelectedConvos(); showToast(`${selectedIds.length} chat(s) deleted`); setConfirm(null); }}
-      onCancel={() => setConfirm(null)} />;
-  }
+  const handleSelectAll = () => {
+    const allIds = visibleConvos.map((c) => c.id);
+    const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+    if (allSelected) clearConvoSelection();
+    else selectAllConvos(allIds);
+  };
 
   return (
+    <>
+    {/* Inline close (X button) confirmation */}
+    {inlineConfirm && (
+      <ConfirmDialog
+        variant={inlineConfirm.action === "delete" ? "delete" : "archive"}
+        title={inlineConfirm.action === "delete"
+          ? `Delete "${inlineConfirm.title}"?`
+          : `Archive "${inlineConfirm.title}"?`}
+        onConfirm={() => {
+          if (inlineConfirm.action === "delete") {
+            deleteConversation(inlineConfirm.id); showToast("Chat deleted");
+          } else {
+            archiveConversation(inlineConfirm.id); showToast("Chat archived");
+          }
+          setInlineConfirm(null);
+        }}
+        onCancel={() => setInlineConfirm(null)}
+      />
+    )}
+    {/* Multi-select confirmations */}
+    {confirm === "archive" && (
+      <ConfirmDialog variant="archive" title={`Archive ${selectedIds.length} chat${selectedIds.length > 1 ? "s" : ""}?`}
+        onConfirm={() => { archiveSelectedConvos(); showToast(`${selectedIds.length} chat(s) archived`); setConfirm(null); }}
+        onCancel={() => setConfirm(null)} />
+    )}
+    {confirm === "unarchive" && (
+      <ConfirmDialog variant="restore" title={`Restore ${selectedIds.length} chat${selectedIds.length > 1 ? "s" : ""} from archive?`}
+        onConfirm={() => { unarchiveSelectedConvos(); showToast(`${selectedIds.length} chat(s) restored`); setConfirm(null); }}
+        onCancel={() => setConfirm(null)} />
+    )}
+    {confirm === "delete" && (
+      <ConfirmDialog variant="delete" title={`Delete ${selectedIds.length} chat${selectedIds.length > 1 ? "s" : ""}?`}
+        onConfirm={() => { deleteSelectedConvos(); showToast(`${selectedIds.length} chat(s) deleted`); setConfirm(null); }}
+        onCancel={() => setConfirm(null)} />
+    )}
     <div style={{
       height: "100%", display: "flex", flexDirection: "column",
-      background: "#FAF8F3", borderRight: "1px solid #ECE7DC",
+      background: "var(--bg-surface)",
       fontFamily: "inherit", overflow: "hidden", userSelect: "none",
     }}>
       {/* ── Header: Search + controls ── */}
@@ -379,7 +380,7 @@ export default function ChatHistorySidebar() {
         {/* Search row */}
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ position: "relative", flex: 1 }}>
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#B0A99C" strokeWidth="1.6" strokeLinecap="round"
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--text-dimmed)" strokeWidth="1.6" strokeLinecap="round"
               style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
               <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
             </svg>
@@ -389,13 +390,13 @@ export default function ChatHistorySidebar() {
               placeholder={showArchived ? "Search archived…" : "Search chats…"}
               style={{
                 width: "100%", height: 30, borderRadius: 8,
-                border: "1px solid #ECE7DC", background: "#FFFFFF",
-                paddingLeft: 28, paddingRight: 8, fontSize: 12.5, color: "#21201C",
+                border: "1px solid var(--border)", background: "var(--bg-card)",
+                paddingLeft: 28, paddingRight: 8, fontSize: 12.5, color: "var(--text-primary)",
                 outline: "none", fontFamily: "inherit", boxSizing: "border-box",
                 transition: "border-color .15s",
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = "#BD6A47"; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = "#ECE7DC"; }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
             />
           </div>
           {/* Filter/archive toggle button */}
@@ -427,25 +428,25 @@ export default function ChatHistorySidebar() {
       {/* ── Multi-select toolbar — icon-only ── */}
       {multiSelectActive && (
         <div style={{
-          padding: "4px 10px", borderTop: "1px solid #ECE7DC", borderBottom: "1px solid #ECE7DC",
-          display: "flex", alignItems: "center", gap: 4, background: "#F5F0E8",
+          padding: "4px 10px", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
+          display: "flex", alignItems: "center", gap: 4, background: "var(--bg-elevated)",
         }}>
-          <span style={{ fontSize: 11, color: "#7C7468", flex: 1, fontWeight: 500 }}>{selectedIds.length} selected</span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", flex: 1, fontWeight: 500 }}>{selectedIds.length} selected</span>
           {/* Select all */}
           <SmallBtn onClick={handleSelectAll} title="Select all">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8A8578" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="2" width="12" height="12" rx="2" /><polyline points="5,8 7,10 11,6" />
             </svg>
           </SmallBtn>
           {/* Deselect all */}
           <SmallBtn onClick={clearConvoSelection} title="Deselect all">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8A8578" strokeWidth="1.4" strokeLinecap="round">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round">
               <rect x="2" y="2" width="12" height="12" rx="2" /><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />
             </svg>
           </SmallBtn>
           {!showArchived && (
             <SmallBtn onClick={() => setConfirm("archive")} title="Archive selected">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8A8578" strokeWidth="1.4" strokeLinecap="round">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round">
                 <rect x="2" y="2" width="12" height="4" rx="1" /><path d="M3 6v7a1 1 0 001 1h8a1 1 0 001-1V6" /><path d="M6.5 9h3" />
               </svg>
             </SmallBtn>
@@ -453,12 +454,12 @@ export default function ChatHistorySidebar() {
           {showArchived && (
             <>
               <SmallBtn onClick={() => setConfirm("unarchive")} title="Restore selected">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8A8578" strokeWidth="1.4" strokeLinecap="round">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round">
                   <rect x="2" y="2" width="12" height="4" rx="1" /><path d="M3 6v7a1 1 0 001 1h8a1 1 0 001-1V6" /><path d="M8 9V12M6.5 10.5L8 12l1.5-1.5" />
                 </svg>
               </SmallBtn>
               <SmallBtn onClick={() => setConfirm("delete")} title="Delete selected" danger>
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#C75A3A" strokeWidth="1.4" strokeLinecap="round">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--danger)" strokeWidth="1.4" strokeLinecap="round">
                   <path d="M3 4h10M5.5 4V3h5v1M5 4v8.5h6V4" />
                 </svg>
               </SmallBtn>
@@ -471,11 +472,11 @@ export default function ChatHistorySidebar() {
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 6px", display: "flex", flexDirection: "column", gap: 2 }}>
         {visibleConvos.length === 0 && (
           <div style={{ padding: "36px 12px", textAlign: "center" }}>
-            <div style={{ fontSize: 13, color: "#B0A99C", marginBottom: 6 }}>
+            <div style={{ fontSize: 13, color: "var(--text-dimmed)", marginBottom: 6 }}>
               {showArchived ? "No archived chats" : search ? `No matches for "${search}"` : "No conversations yet"}
             </div>
             {!showArchived && !search && (
-              <div style={{ fontSize: 11.5, color: "#C4BEB2" }}>Start chatting from the home screen</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-ghost)" }}>Start chatting from the home screen</div>
             )}
           </div>
         )}
@@ -487,7 +488,7 @@ export default function ChatHistorySidebar() {
               onHover={handleRowHover} onSwitch={switchConversation}
               onToggleSelect={() => toggleSelectConvo(c.id)}
               onContextMenu={(e) => handleContextMenu(e, c)}
-              onClose={(id) => { deleteConversation(id); showToast("Chat deleted"); }}
+              onClose={(id, title) => setInlineConfirm({ id, title, action: "delete" })}
             />
           ))
         ) : groups && (
@@ -497,28 +498,28 @@ export default function ChatHistorySidebar() {
               onHover={handleRowHover} onSwitch={switchConversation}
               onToggleSelect={(id) => toggleSelectConvo(id)}
               onContextMenu={handleContextMenu}
-              onClose={(id) => { archiveConversation(id); showToast("Chat archived"); }}
+              onClose={(id, title) => setInlineConfirm({ id, title, action: "archive" })}
             />
             <ConvoGroup label="Today" items={groups.today} activeId={activeId}
               selectedIds={selectedIds} multiSelectActive={multiSelectActive}
               onHover={handleRowHover} onSwitch={switchConversation}
               onToggleSelect={(id) => toggleSelectConvo(id)}
               onContextMenu={handleContextMenu}
-              onClose={(id) => { archiveConversation(id); showToast("Chat archived"); }}
+              onClose={(id, title) => setInlineConfirm({ id, title, action: "archive" })}
             />
             <ConvoGroup label="This week" items={groups.week} activeId={activeId}
               selectedIds={selectedIds} multiSelectActive={multiSelectActive}
               onHover={handleRowHover} onSwitch={switchConversation}
               onToggleSelect={(id) => toggleSelectConvo(id)}
               onContextMenu={handleContextMenu}
-              onClose={(id) => { archiveConversation(id); showToast("Chat archived"); }}
+              onClose={(id, title) => setInlineConfirm({ id, title, action: "archive" })}
             />
             <ConvoGroup label="Older" items={groups.older} activeId={activeId}
               selectedIds={selectedIds} multiSelectActive={multiSelectActive}
               onHover={handleRowHover} onSwitch={switchConversation}
               onToggleSelect={(id) => toggleSelectConvo(id)}
               onContextMenu={handleContextMenu}
-              onClose={(id) => { archiveConversation(id); showToast("Chat archived"); }}
+              onClose={(id, title) => setInlineConfirm({ id, title, action: "archive" })}
             />
           </>
         )}
@@ -535,6 +536,7 @@ export default function ChatHistorySidebar() {
         <HoverPopover convo={hoveredConvo} anchorRect={hoveredRect} />
       )}
     </div>
+    </>
   );
 }
 
@@ -548,10 +550,10 @@ function IconButton({ children, onClick, title, accent }: {
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
         width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-        border: `1px solid ${hovered ? (accent ? "#BD6A47" : "#D4C9B8") : "#ECE7DC"}`,
-        background: hovered ? (accent ? "#FDF5F0" : "#F0EDE6") : "transparent",
+        border: `1px solid ${hovered ? (accent ? "var(--accent)" : "var(--border-subtle)") : "var(--border)"}`,
+        background: hovered ? (accent ? "var(--bg-surface)" : "var(--bg-input)") : "transparent",
         cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-        color: hovered ? (accent ? "#BD6A47" : "#7C7468") : "#A8A194",
+        color: hovered ? (accent ? "var(--accent)" : "var(--text-muted)") : "var(--text-dimmed)",
         transition: "all .15s ease",
       }}
     >{children}</button>
@@ -565,8 +567,8 @@ function SmallBtn({ children, onClick, title, danger }: {
   return (
     <button onClick={onClick} title={title} style={{
       display: "flex", alignItems: "center", justifyContent: "center",
-      width: 24, height: 24, border: "1px solid #E0DAD0", background: "#FFFFFF",
-      borderRadius: 6, padding: 0, color: danger ? "#C75A3A" : "#7C7468",
+      width: 24, height: 24, border: "1px solid var(--border-subtle)", background: "var(--bg-card)",
+      borderRadius: 6, padding: 0, color: danger ? "var(--danger)" : "var(--text-muted)",
       cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
     }}>{children}</button>
   );
@@ -584,18 +586,18 @@ function ConvoGroup({ label, items, icon, activeId, selectedIds, multiSelectActi
   onSwitch: (id: string) => void;
   onToggleSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, convo: Conversation) => void;
-  onClose: (id: string) => void;
+  onClose: (id: string, title: string) => void;
 }) {
   if (items.length === 0) return null;
   return (
     <div style={{ marginBottom: 4, display: "flex", flexDirection: "column", gap: 2 }}>
       <div style={{
-        fontSize: 10.5, fontWeight: 600, color: "#B0A99C", textTransform: "uppercase",
+        fontSize: 10.5, fontWeight: 600, color: "var(--text-dimmed)", textTransform: "uppercase",
         letterSpacing: "0.05em", padding: "10px 8px 4px",
         display: "flex", alignItems: "center", gap: 5,
       }}>
         {icon === "pin" && (
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#B0A99C" strokeWidth="1.5" strokeLinecap="round">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--text-dimmed)" strokeWidth="1.5" strokeLinecap="round">
             <path d="M5.5 2.5L10.5 2.5L11.5 7L9 9.5V12.5L7 14.5L7 9.5L4.5 7Z" />
           </svg>
         )}
@@ -625,7 +627,7 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
   onSwitch: (id: string) => void;
   onToggleSelect: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
-  onClose: (id: string) => void;
+  onClose: (id: string, title: string) => void;
 }) {
   const rowRef = useRef<HTMLButtonElement>(null);
   const [hovered, setHovered] = useState(false);
@@ -650,9 +652,9 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
     onHover(null);
   };
 
-  const bg = isSelected ? "#EDE6DA"
-    : isActive ? "#F0EDE6"
-    : hovered ? "#F7F5F0"
+  const bg = isSelected ? "var(--bg-hover)"
+    : isActive ? "var(--bg-input)"
+    : hovered ? "var(--bg-elevated)"
     : "transparent";
 
   return (
@@ -665,7 +667,7 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
       style={{
         width: "100%", display: "flex", alignItems: "center", gap: 8,
         padding: "6px 6px 6px 8px", borderRadius: 8,
-        border: isSelected ? "1px solid #D4C9B8" : isActive ? "1px solid #ECE7DC" : "1px solid transparent",
+        border: isSelected ? "1px solid var(--border-subtle)" : isActive ? "1px solid var(--border)" : "1px solid transparent",
         cursor: "pointer", textAlign: "left", fontFamily: "inherit",
         background: bg, transition: "all .1s ease", position: "relative", overflow: "visible",
       }}
@@ -676,16 +678,16 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
           <span
             onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
             style={{
-              width: 26, height: 26, borderRadius: 6, display: "flex",
+              width: 18, height: 18, borderRadius: 4, display: "flex",
               alignItems: "center", justifyContent: "center", cursor: "pointer",
               boxSizing: "border-box" as const,
-              background: isSelected ? "#BD6A47" : hovered ? "#F0EDE6" : "transparent",
-              border: isSelected ? "1.5px solid #BD6A47" : "1.5px solid #C4BEB2",
+              background: isSelected ? "var(--accent)" : hovered ? "var(--bg-input)" : "transparent",
+              border: isSelected ? "1.5px solid var(--accent)" : "1.5px solid var(--text-ghost)",
               transition: "all .1s",
             }}
           >
             {isSelected ? (
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#FFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="var(--bg-card)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="2.5,6 5,8.5 9.5,3.5" />
               </svg>
             ) : (
@@ -696,13 +698,13 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
         ) : (
           /* Terminal-style icon ">_" */
           <div style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: isActive ? "#F3E9E1" : "#F5F3ED",
+            width: 18, height: 18, borderRadius: 4,
+            background: isActive ? "var(--accent-bg)" : "var(--bg-elevated)",
             display: "flex", alignItems: "center", justifyContent: "center",
             transition: "background .1s",
           }}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"
-              stroke={isActive ? "#BD6A47" : "#A8A194"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none"
+              stroke={isActive ? "var(--accent)" : "var(--text-dimmed)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 5l3 3-3 3" /><path d="M9 11h3" />
             </svg>
           </div>
@@ -715,7 +717,7 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
           display: "flex", alignItems: "center", gap: 4, height: 18,
         }}>
           {convo.pinned && !isArchiveView && (
-            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#BD6A47" strokeWidth="1.8" strokeLinecap="round" style={{ flexShrink: 0 }}>
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" style={{ flexShrink: 0 }}>
               <path d="M5.5 2.5L10.5 2.5L11.5 7L9 9.5V12.5L7 14.5L7 9.5L4.5 7Z" />
             </svg>
           )}
@@ -724,18 +726,18 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
             always={isActive}
             externalHover={hovered}
             style={{
-              fontSize: 13, lineHeight: "18px", fontWeight: isActive ? 600 : 500, color: isActive ? "#21201C" : "#4A4640",
+              fontSize: 13, lineHeight: "18px", fontWeight: isActive ? 600 : 500, color: isActive ? "var(--text-primary)" : "var(--text-heading)",
               flex: 1, minWidth: 0,
             }}
           />
         </div>
         <div style={{
-          fontSize: 11.5, color: "#A8A194", marginTop: 1,
+          fontSize: 11.5, color: "var(--text-dimmed)", marginTop: 1,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           display: "flex", alignItems: "center", gap: 4,
         }}>
           {/* Branch-style icon before subtitle */}
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#C4BEB2" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--text-ghost)" strokeWidth="1.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
             <circle cx="4" cy="4" r="1.5" /><circle cx="12" cy="12" r="1.5" /><path d="M4 5.5v3c0 2 2 3.5 4 3.5h2.5" />
           </svg>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</span>
@@ -744,7 +746,7 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
 
       {/* Right: timestamp (always visible, fades on hover) */}
       <div style={{ flexShrink: 0, opacity: hovered && !multiSelectActive ? 0 : 1, transition: "opacity .1s" }}>
-        <span style={{ fontSize: 10, color: "#C4BEB2", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: 10, color: "var(--text-ghost)", whiteSpace: "nowrap" }}>
           {relativeTime(convo.updatedAt)}
         </span>
       </div>
@@ -752,41 +754,41 @@ function ConvoRow({ convo, isActive, isSelected, multiSelectActive, isArchiveVie
       {/* Floating clip — 3-dot + X at top-right corner, overlapping card edge */}
       {hovered && !multiSelectActive && (
         <div style={{
-          position: "absolute", top: -6, right: -4, zIndex: 2,
-          display: "flex", alignItems: "center", gap: 1,
-          background: "#FFFFFF", border: "1px solid #E0DAD0", borderRadius: 6,
-          padding: "2px 3px",
-          boxShadow: "0 2px 8px rgba(40,36,28,.1)",
+          position: "absolute", top: -5, right: -3, zIndex: 2,
+          display: "flex", alignItems: "center", gap: 0,
+          background: "var(--bg-card)", border: "1px solid var(--border-subtle)", borderRadius: 5,
+          padding: "1px 2px",
+          boxShadow: "0 2px 6px rgba(var(--shadow-color), .08)",
         }}>
           {/* 3-dot menu */}
           <span
             onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
             title="More"
             style={{
-              width: 20, height: 20, borderRadius: 4,
+              width: 16, height: 16, borderRadius: 3,
               display: "inline-flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", color: "#B0A99C", transition: "all .1s",
+              cursor: "pointer", color: "var(--text-dimmed)", transition: "all .1s",
             }}
-            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "#7C7468"; t.style.background = "#F0EDE6"; }}
-            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "#B0A99C"; t.style.background = "transparent"; }}
+            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "var(--text-muted)"; t.style.background = "var(--bg-input)"; }}
+            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "var(--text-dimmed)"; t.style.background = "transparent"; }}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
               <circle cx="4" cy="8" r="1.3" /><circle cx="8" cy="8" r="1.3" /><circle cx="12" cy="8" r="1.3" />
             </svg>
           </span>
           {/* X close button */}
           <span
-            onClick={(e) => { e.stopPropagation(); onClose(convo.id); }}
+            onClick={(e) => { e.stopPropagation(); onClose(convo.id, convo.title); }}
             title={isArchiveView ? "Delete" : "Archive"}
             style={{
-              width: 20, height: 20, borderRadius: 4,
+              width: 16, height: 16, borderRadius: 3,
               display: "inline-flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", color: "#C4BEB2", transition: "all .1s",
+              cursor: "pointer", color: "var(--text-ghost)", transition: "all .1s",
             }}
-            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "#C75A3A"; t.style.background = "#FEF3F0"; }}
-            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "#C4BEB2"; t.style.background = "transparent"; }}
+            onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "var(--danger)"; t.style.background = "var(--accent-bg)"; }}
+            onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.color = "var(--text-ghost)"; t.style.background = "transparent"; }}
           >
-            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
             </svg>
           </span>

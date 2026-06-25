@@ -33,6 +33,8 @@ impl Store {
         // Enable WAL mode for better concurrent read performance
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
         conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+        // Allow concurrent access from MCP server + Tauri app
+        conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
 
         let store = Self { conn, db_path };
         store.run_migrations()?;
@@ -136,6 +138,26 @@ impl Store {
 
         // v5 migration: contradiction detection
         self.conn.execute_batch(include_str!("migrations/005_contradictions.sql"))?;
+
+        // v6 migration: workspace roots
+        self.conn.execute_batch(include_str!("migrations/006_workspace_roots.sql"))?;
+        {
+            let has_root_id: bool = self.conn.prepare("SELECT root_id FROM captures LIMIT 0").is_ok();
+            if !has_root_id {
+                info!("Adding workspace root columns to captures...");
+                // Note: REFERENCES clause omitted from ALTER TABLE because SQLite
+                // requires DEFAULT NULL when foreign_keys=ON + REFERENCES.
+                // FK integrity is enforced at the application layer instead.
+                self.conn.execute("ALTER TABLE captures ADD COLUMN root_id INTEGER DEFAULT 0", []).ok();
+                self.conn.execute("ALTER TABLE captures ADD COLUMN source_path TEXT", []).ok();
+                self.conn.execute_batch(
+                    "CREATE INDEX IF NOT EXISTS idx_captures_root_id ON captures(root_id);"
+                )?;
+            }
+        }
+
+        // v7 migration: workspace_files (metadata-only, no content)
+        self.conn.execute_batch(include_str!("migrations/007_workspace_files.sql"))?;
 
         info!("Migrations complete.");
         Ok(())

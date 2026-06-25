@@ -35,24 +35,29 @@ export default function ContextSidebar() {
   const expandAll = useCallback(() => setExpanded(new Set(ALL_SECTIONS)), []);
   const collapseAll = useCallback(() => setExpanded(new Set()), []);
 
-  // Build explorer data
+  // Build explorer data — filtered by explorerSearch
   const data = useMemo(() => {
     const spaces: Record<string, number> = {};
     const projects: Record<string, number> = {};
     const tags: Record<string, number> = {};
 
     for (const c of captures) {
+      if (c.status === "archived") continue; // exclude archived from sidebar counts
       spaces[c.space] = (spaces[c.space] || 0) + 1;
       for (const p of c.projects) projects[p] = (projects[p] || 0) + 1;
       for (const t of c.tags) tags[t] = (tags[t] || 0) + 1;
     }
 
+    const q = explorerSearch.trim().toLowerCase();
+    const filterEntries = (entries: [string, number][]) =>
+      q ? entries.filter(([name]) => name.toLowerCase().includes(q)) : entries;
+
     return {
-      spaces: Object.entries(spaces).sort(([a], [b]) => a.localeCompare(b)),
-      projects: Object.entries(projects).sort(([a], [b]) => a.localeCompare(b)),
-      tags: Object.entries(tags).sort((a, b) => b[1] - a[1]),
+      spaces: filterEntries(Object.entries(spaces).sort(([a], [b]) => a.localeCompare(b))),
+      projects: filterEntries(Object.entries(projects).sort(([a], [b]) => a.localeCompare(b))),
+      tags: filterEntries(Object.entries(tags).sort((a, b) => b[1] - a[1])),
     };
-  }, [captures]);
+  }, [captures, explorerSearch]);
 
   const isAllActive = browseFilter.kind === "all";
   const allExpanded = ALL_SECTIONS.every((s) => expanded.has(s));
@@ -84,12 +89,12 @@ export default function ContextSidebar() {
       {/* Search */}
       <div style={{ padding: "0 10px 6px" }}>
         <div style={styles.searchWrap}>
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#B0A99C" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--text-dimmed)" strokeWidth="1.5" style={{ flexShrink: 0 }}>
             <circle cx="7" cy="7" r="4.5" /><line x1="10.2" y1="10.2" x2="14" y2="14" />
           </svg>
           <input
             type="text"
-            placeholder="Search captures…"
+            placeholder="Filter spaces, projects, tags…"
             value={explorerSearch}
             onChange={(e) => setExplorerSearch(e.target.value)}
             style={styles.searchInput}
@@ -110,9 +115,9 @@ export default function ContextSidebar() {
           onClick={() => { goBrowse("all", null, "All captures"); clearTags(); }}
           style={{
             ...styles.allBtn,
-            background: isAllActive && selectedTags.length === 0 ? "#FBF3EE" : "transparent",
-            border: `1px solid ${isAllActive && selectedTags.length === 0 ? "#E0C4B5" : "transparent"}`,
-            color: isAllActive && selectedTags.length === 0 ? "#9A4F30" : "#56524A",
+            background: isAllActive && selectedTags.length === 0 ? "var(--accent-bg)" : "transparent",
+            border: `1px solid ${isAllActive && selectedTags.length === 0 ? "var(--border-subtle)" : "transparent"}`,
+            color: isAllActive && selectedTags.length === 0 ? "var(--accent-text)" : "var(--text-secondary)",
           }}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
@@ -183,7 +188,7 @@ export default function ContextSidebar() {
             action={selectedTags.length > 0 ? (
               <button onClick={clearTags} title="Clear tags" style={{
                 border: "none", background: "transparent", cursor: "pointer",
-                fontSize: 10, color: "#BD6A47", fontWeight: 500, padding: "0 2px",
+                fontSize: 10, color: "var(--accent)", fontWeight: 500, padding: "0 2px",
                 fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
               }}>clear</button>
             ) : undefined}
@@ -196,9 +201,9 @@ export default function ContextSidebar() {
                     key={tag}
                     onClick={() => toggleTag(tag)}
                     style={{
-                      border: `1px solid ${active ? "#E0C4B5" : "#E9E5DC"}`,
-                      background: active ? "#FBF3EE" : "#F5F2EC",
-                      color: active ? "#9A4F30" : "#5C584E",
+                      border: `1px solid ${active ? "var(--border-subtle)" : "var(--border)"}`,
+                      background: active ? "var(--accent-bg)" : "var(--bg-elevated)",
+                      color: active ? "var(--accent-text)" : "var(--text-secondary)",
                       borderRadius: 12, padding: "3px 9px",
                       fontSize: 11, fontWeight: active ? 500 : 400,
                       cursor: "pointer",
@@ -208,7 +213,7 @@ export default function ContextSidebar() {
                     }}
                   >
                     {active && (
-                      <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="#BD6A47" strokeWidth="1.8" strokeLinecap="round">
+                      <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round">
                         <polyline points="1.5,5 4,7.5 8.5,2.5" />
                       </svg>
                     )}
@@ -270,17 +275,17 @@ function NavItem({ label, count, active, icon, onClick }: {
       style={{
         display: "flex", alignItems: "center", gap: 8,
         width: "100%", border: "none",
-        background: active ? "#FBF3EE" : (hovered ? "#F5F2EC" : "transparent"),
+        background: active ? "var(--accent-bg)" : (hovered ? "var(--bg-elevated)" : "transparent"),
         borderRadius: 6, padding: "5px 8px 5px 24px",
         cursor: "pointer", textAlign: "left",
         fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
         transition: "background .08s",
       }}
     >
-      <span style={{ display: "flex", flexShrink: 0, color: active ? "#9A4F30" : "#7C7468" }}>{icon}</span>
+      <span style={{ display: "flex", flexShrink: 0, color: active ? "var(--accent-text)" : "var(--text-muted)" }}>{icon}</span>
       <span style={{
         flex: 1, fontSize: 12.5,
-        color: active ? "#9A4F30" : "#4A463E",
+        color: active ? "var(--accent-text)" : "var(--text-heading)",
         fontWeight: active ? 500 : 400,
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         textTransform: "capitalize",
@@ -289,7 +294,7 @@ function NavItem({ label, count, active, icon, onClick }: {
       </span>
       <span style={{
         fontSize: 10,
-        color: active ? "#BD6A47" : "#B7B1A4",
+        color: active ? "var(--accent)" : "var(--text-dimmed)",
         fontFamily: "ui-monospace, Menlo, monospace",
         flexShrink: 0,
       }}>{count}</span>
@@ -302,8 +307,7 @@ function NavItem({ label, count, active, icon, onClick }: {
    ════════════════════════════════════════════════════════════════ */
 const styles: Record<string, React.CSSProperties> = {
   root: {
-    width: "100%", height: "100%", background: "#FAF8F3",
-    borderRight: "1px solid #E9E5DC",
+    width: "100%", height: "100%", background: "var(--bg-surface)",
     display: "flex", flexDirection: "column",
     boxSizing: "border-box",
   },
@@ -316,7 +320,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   headerLabel: {
     fontSize: 11, fontWeight: 600, letterSpacing: ".04em",
-    textTransform: "uppercase" as const, color: "#A09A8C",
+    textTransform: "uppercase" as const, color: "var(--text-faint)",
   },
 
   headerActions: {
@@ -326,7 +330,7 @@ const styles: Record<string, React.CSSProperties> = {
   headerBtn: {
     display: "flex", alignItems: "center", justifyContent: "center",
     width: 26, height: 26, border: "none", background: "transparent",
-    borderRadius: 6, cursor: "pointer", color: "#9A958A",
+    borderRadius: 6, cursor: "pointer", color: "var(--text-faint)",
     transition: "background .1s",
     padding: 0,
   },
@@ -348,19 +352,19 @@ const styles: Record<string, React.CSSProperties> = {
 
   searchWrap: {
     display: "flex", alignItems: "center", gap: 7,
-    background: "#F5F2EC", border: "1px solid #E9E5DC",
+    background: "var(--bg-elevated)", border: "1px solid var(--border)",
     borderRadius: 8, padding: "5px 9px",
   },
 
   searchInput: {
     border: "none", outline: "none", background: "transparent",
-    fontSize: 12, color: "#21201C", flex: 1, minWidth: 0,
+    fontSize: 12, color: "var(--text-primary)", flex: 1, minWidth: 0,
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
   } as React.CSSProperties,
 
   searchClear: {
     display: "flex", border: "none", background: "transparent",
-    color: "#B0A99C", cursor: "pointer", padding: 2,
+    color: "var(--text-dimmed)", cursor: "pointer", padding: 2,
   },
 
   scrollArea: {
@@ -379,6 +383,6 @@ const styles: Record<string, React.CSSProperties> = {
 
   sectionTitle: {
     fontSize: 10.5, fontWeight: 600, letterSpacing: ".03em",
-    textTransform: "uppercase" as const, color: "#A09A8C",
+    textTransform: "uppercase" as const, color: "var(--text-faint)",
   },
 };

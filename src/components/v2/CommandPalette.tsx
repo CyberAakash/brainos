@@ -39,7 +39,7 @@ function highlightMatches(text: string, query: string): React.ReactNode[] {
       re.lastIndex = 0;
       return (
         <mark key={i} style={{
-          background: "#F3E0D4", color: "#7A4A30", borderRadius: 2,
+          background: "var(--accent-bg)", color: "var(--accent-text)", borderRadius: 2,
           padding: "0 1px", fontWeight: 600,
         }}>{part}</mark>
       );
@@ -205,9 +205,9 @@ export default function CommandPalette() {
       {/* ── Search input row ── */}
       <div style={{
         display: "flex", alignItems: "center", gap: 10, padding: "0 18px",
-        borderBottom: "1px solid #E9E5DC", flexShrink: 0,
+        borderBottom: "1px solid var(--border)", flexShrink: 0,
       }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#9A958A" strokeWidth="1.5">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" strokeWidth="1.5">
           <circle cx="7" cy="7" r="4.5" /><line x1="10.5" y1="10.5" x2="14" y2="14" />
         </svg>
         <Command.Input
@@ -216,13 +216,13 @@ export default function CommandPalette() {
           placeholder={isAttachMode ? "Search captures to attach…" : "Search captures…"}
         />
         {hasQuery && (
-          <span style={{ fontSize: 11, color: "#A8A194", flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: "var(--text-faint)", flexShrink: 0 }}>
             {results.length} result{results.length !== 1 ? "s" : ""}
           </span>
         )}
         <span style={{
-          fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11, color: "#A8A194",
-          background: "#F0EBE1", borderRadius: 5, padding: "2px 6px",
+          fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11, color: "var(--text-faint)",
+          background: "var(--bg-input)", borderRadius: 5, padding: "2px 6px",
         }}>esc</span>
       </div>
 
@@ -230,7 +230,7 @@ export default function CommandPalette() {
       <Command.List>
         {loading && (
           <Command.Loading>
-            <div style={{ padding: "12px 20px", fontSize: 12, color: "#A8A194" }}>
+            <div style={{ padding: "12px 20px", fontSize: 12, color: "var(--text-faint)" }}>
               Searching…
             </div>
           </Command.Loading>
@@ -238,11 +238,11 @@ export default function CommandPalette() {
 
         <Command.Empty>
           <svg width="36" height="36" viewBox="0 0 36 36" fill="none" style={{ marginBottom: 10, opacity: 0.45 }}>
-            <circle cx="16" cy="16" r="10" stroke="#C8C2B6" strokeWidth="1.8" />
-            <line x1="23" y1="23" x2="31" y2="31" stroke="#C8C2B6" strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx="16" cy="16" r="10" stroke="var(--text-ghost)" strokeWidth="1.8" />
+            <line x1="23" y1="23" x2="31" y2="31" stroke="var(--text-ghost)" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
-          <div style={{ fontSize: 14, color: "#56524A", fontWeight: 500, marginBottom: 3 }}>No results</div>
-          <div style={{ fontSize: 12.5, color: "#A8A194" }}>Try a different keyword</div>
+          <div style={{ fontSize: 14, color: "var(--text-secondary)", fontWeight: 500, marginBottom: 3 }}>No results</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Try a different keyword</div>
         </Command.Empty>
 
         {/* Recent captures */}
@@ -275,22 +275,22 @@ export default function CommandPalette() {
             <Command.Separator />
             <Command.Group heading="Actions">
               <Command.Item value="action:new" onSelect={handleSelect} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#9A4F30" strokeWidth="1.7" style={{ flexShrink: 0 }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--accent-text)" strokeWidth="1.7" style={{ flexShrink: 0 }}>
                   <line x1="7" y1="2.5" x2="7" y2="11.5" /><line x1="2.5" y1="7" x2="11.5" y2="7" />
                 </svg>
                 <span style={{ fontWeight: 500 }}>New capture</span>
               </Command.Item>
               <Command.Item value="action:browse" onSelect={handleSelect} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#5C584E" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" style={{ flexShrink: 0 }}>
                   <rect x="1.5" y="1.5" width="11" height="11" rx="2" />
                   <line x1="1.5" y1="5" x2="12.5" y2="5" /><line x1="5" y1="5" x2="5" y2="12.5" />
                 </svg>
                 <span style={{ fontWeight: 500 }}>Browse all captures</span>
               </Command.Item>
               <Command.Item value="action:settings" onSelect={handleSelect} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-                <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="#5C584E" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+                <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" style={{ flexShrink: 0 }}>
                   <line x1="3" y1="6" x2="15" y2="6" /><line x1="3" y1="12" x2="15" y2="12" />
-                  <circle cx="11" cy="6" r="2" fill="#FFFFFF" /><circle cx="7" cy="12" r="2" fill="#FFFFFF" />
+                  <circle cx="11" cy="6" r="2" fill="var(--bg-card)" /><circle cx="7" cy="12" r="2" fill="var(--bg-card)" />
                 </svg>
                 <span style={{ fontWeight: 500 }}>Settings</span>
               </Command.Item>
@@ -302,7 +302,7 @@ export default function CommandPalette() {
       {/* ── Footer ── */}
       <div style={{
         display: "flex", alignItems: "center", padding: "6px 14px",
-        borderTop: "1px solid #E9E5DC", background: "#FAFAF5", flexShrink: 0, gap: 10,
+        borderTop: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0, gap: 10,
       }}>
         <div style={{ flex: 1 }} />
         <KbdHint keys="↑↓" label="Navigate" />
@@ -343,7 +343,7 @@ function CaptureItem({ capture, snippet, query, onSelect }: {
           {hasQuery ? highlightMatches(capture.title, query) : capture.title}
         </span>
         {capture.date && (
-          <span style={{ fontSize: 11, color: "#A8A194", flexShrink: 0, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 11, color: "var(--text-faint)", flexShrink: 0, whiteSpace: "nowrap" }}>
             {relativeTime(capture.date)}
           </span>
         )}
@@ -352,7 +352,7 @@ function CaptureItem({ capture, snippet, query, onSelect }: {
       {/* Row 2: snippet with highlights */}
       {hasSnippet && (
         <div style={{
-          fontSize: 12, lineHeight: 1.45, color: "#7C7468",
+          fontSize: 12, lineHeight: 1.45, color: "var(--text-muted)",
           overflow: "hidden", textOverflow: "ellipsis",
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
           paddingLeft: 17,
@@ -369,10 +369,10 @@ function KbdHint({ keys, label }: { keys: string; label: string }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
       <span style={{
-        fontFamily: "ui-monospace,Menlo,monospace", fontSize: 10.5, color: "#7A7568",
-        background: "#EEEAE2", borderRadius: 4, padding: "1px 5px",
+        fontFamily: "ui-monospace,Menlo,monospace", fontSize: 10.5, color: "var(--text-muted)",
+        background: "var(--bg-hover)", borderRadius: 4, padding: "1px 5px",
       }}>{keys}</span>
-      <span style={{ fontSize: 11, color: "#A8A194" }}>{label}</span>
+      <span style={{ fontSize: 11, color: "var(--text-faint)" }}>{label}</span>
     </span>
   );
 }

@@ -18,9 +18,81 @@ pub struct GeneralConfig {
     pub display_name: String,
     #[serde(default = "default_true")]
     pub auto_index: bool,
+    /// Additional workspace roots to index (code repos, project dirs)
+    #[serde(default)]
+    pub workspace_roots: Vec<WorkspaceRoot>,
 }
 
 fn default_true() -> bool { true }
+
+/// A registered workspace root — a directory whose source files
+/// get indexed into BrainOS for cross-workspace context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceRoot {
+    pub path: PathBuf,
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// File extensions to index (e.g. ["rs", "ts"]). Empty = use default allowlist.
+    #[serde(default)]
+    pub file_types: Vec<String>,
+    /// Directory names to exclude on top of .gitignore (e.g. ["vendor"]).
+    #[serde(default)]
+    pub exclude_dirs: Vec<String>,
+}
+
+impl WorkspaceRoot {
+    /// Resolve ~ to home dir
+    pub fn resolved_path(&self) -> PathBuf {
+        if self.path.starts_with("~") {
+            dirs::home_dir()
+                .unwrap_or_default()
+                .join(self.path.strip_prefix("~").unwrap())
+        } else {
+            self.path.clone()
+        }
+    }
+}
+
+/// Default file extensions to index from workspace roots.
+pub const DEFAULT_SOURCE_EXTENSIONS: &[&str] = &[
+    // Rust
+    "rs",
+    // JavaScript / TypeScript
+    "ts", "tsx", "js", "jsx", "mjs", "mts",
+    // JVM
+    "java", "kt", "scala",
+    // Python
+    "py",
+    // Go
+    "go",
+    // Systems
+    "c", "cpp", "h", "hpp", "cs",
+    // Web
+    "html", "css", "scss", "vue", "svelte",
+    // Data / Config
+    "json", "yaml", "yml", "toml", "xml", "sql", "graphql", "proto",
+    // Docs
+    "md", "txt", "rst",
+    // Shell
+    "sh", "bash", "zsh",
+    // Ruby / PHP / Swift
+    "rb", "php", "swift",
+];
+
+/// Directories always excluded from workspace indexing (on top of .gitignore).
+pub const ALWAYS_EXCLUDE_DIRS: &[&str] = &[
+    "node_modules", "target", ".git", "dist", "build", ".next", ".nuxt",
+    "__pycache__", ".gradle", ".idea", ".vscode", ".DS_Store", "vendor",
+    "out", ".cache", "coverage", ".turbo", ".svn", ".hg", "bower_components",
+    ".tox", ".mypy_cache", ".pytest_cache", "egg-info",
+];
+
+/// Max file size to index (100 KB). Larger files are skipped.
+pub const MAX_SOURCE_FILE_SIZE: u64 = 100 * 1024;
+
+/// Files larger than this get truncated to MAX_SOURCE_FILE_SIZE when indexing.
+pub const TRUNCATE_THRESHOLD: u64 = 10 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
@@ -118,6 +190,7 @@ impl Default for Config {
                 kb_root,
                 display_name: String::new(),
                 auto_index: true,
+                workspace_roots: Vec::new(),
             },
             sync: SyncConfig {
                 enabled: false,

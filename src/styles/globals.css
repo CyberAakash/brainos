@@ -85,35 +85,208 @@
   --animate-rotate-text: rotateText 0.3s ease;
 }
 
-/* ── Legacy CSS variable aliases (backward compat during migration) ── */
+/* ── Semantic tokens for light theme (default) ── */
 :root {
-  --accent: var(--color-accent);
-  --accent-hover: var(--color-accent-hover);
-  --accent-subtle: var(--color-accent-subtle);
-  --bg-main: var(--color-bg-main);
-  --bg-sidebar: var(--color-bg-sidebar);
-  --bg-card: var(--color-bg-card);
-  --bg-overlay: var(--color-bg-overlay);
-  --bg-input: var(--color-bg-input);
-  --bg-toast: var(--color-bg-toast);
-  --border: var(--color-border);
-  --border-light: var(--color-border-light);
-  --border-medium: var(--color-border-medium);
-  --border-dark: var(--color-border-dark);
-  --text-primary: var(--color-text-primary);
-  --text-secondary: var(--color-text-secondary);
-  --text-muted: var(--color-text-muted);
-  --text-faint: var(--color-text-faint);
-  --text-inverse: var(--color-text-inverse);
-  --font-serif: var(--font-serif);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --sidebar-width: var(--spacing-sidebar);
-  --sidebar-collapsed-width: var(--spacing-sidebar-collapsed);
-  --detail-width: var(--spacing-detail);
-  --topbar-height: var(--spacing-topbar);
-  --statusbar-height: var(--spacing-statusbar);
+  /* Backgrounds */
+  --bg-app: #F5F3ED;
+  --bg-surface: #FAF8F3;
+  --bg-elevated: #F5F2EC;
+  --bg-hover: #EEEAE2;
+  --bg-input: #F0EDE6;
+  --bg-badge: #EEEAE2;
+  --bg-toast: #2B2823;
+  --bg-card: #FFFFFF;
+  --bg-overlay: rgba(0, 0, 0, 0.35);
+
+  /* Borders */
+  --border: #E9E5DC;
+  --border-subtle: #E0DAD0;
+  --border-divider: #E0DCD4;
+  --border-chunk: #EBE7DF;
+
+  /* Text */
+  --text-primary: #21201C;
+  --text-heading: #3F3B33;
+  --text-secondary: #56524A;
+  --text-muted: #8A8578;
+  --text-faint: #A09A8C;
+  --text-dimmed: #B0A99C;
+  --text-ghost: #C4BEB2;
+  --text-inverse: #F3EFE8;
+
+  /* Accent (terracotta) */
+  --accent: #BD6A47;
+  --accent-hover: #A85B3B;
+  --accent-text: #9A4F30;
+  --accent-bg: #F8EDE6;
+  --accent-active: rgba(189, 106, 71, 0.12);
+  --accent-link: #BD6A47;
+
+  /* Search match highlighting */
+  --match-bg: #F5D9A8;
+  --match-text: #6B4A1A;
+  --match-row: #FDF8F0;
+  --match-row-hover: #FBF4E8;
+
+  /* Status */
+  --green-dot: #5F8C5A;
+  --status-active-bg: #E0EDDE;
+  --status-active-fg: #4A6B45;
+
+  /* On-accent (text on accent bg buttons) */
+  --text-on-accent: #FFFFFF;
+
+  /* Editor (code-edit dark area) */
+  --editor-border: #3A3730;
+  --editor-input: #33302B;
+  --editor-text: #E8E4DB;
+  --editor-text-dim: #D0CBBD;
+
+  /* Tooltip */
+  --tooltip-bg: #2B2823;
+  --tooltip-text: #F3EFE8;
+
+  /* Scrollbar */
+  --scrollbar-thumb: #C8C3B8;
+  --scrollbar-hover: #A8A194;
+
+  /* Danger / destructive */
+  --danger: #C75A3A;
+  --danger-hover: #B04E30;
+  --danger-bg: #FDF2F0;
+  --danger-text: #C0392B;
+
+  /* Shadows (RGB triplets for rgba usage) */
+  --shadow-color: 40, 36, 28;
+  --shadow-accent: 120, 60, 30;
+  --overlay-white: 255, 255, 255;
+
+  /* Card surfaces (for semi-transparent overlays) */
+  --bg-card-translucent: rgba(255, 255, 255, 0.85);
+  --bg-card-soft: rgba(255, 255, 255, 0.55);
+
+  /* Chat message bubbles */
+  --chat-user-bg: rgba(255, 248, 240, 0.9);
+  --chat-user-border: rgba(235, 221, 208, 0.6);
+  --chat-ai-bg: rgba(250, 248, 243, 0.7);
+  --chat-ai-border: rgba(231, 225, 214, 0.5);
+
+  /* Highlight (for code/blockquote accents) */
+  --highlight: #F5A623;
+  --highlight-bg: rgba(245, 166, 35, 0.07);
+  --highlight-glow: rgba(245, 166, 35, 0.15);
+  --highlight-badge-bg: rgba(245, 166, 35, 0.35);
+
+  /* Legacy aliases */
+  --accent-subtle: var(--accent-active);
+  --bg-main: var(--bg-app);
+  --bg-sidebar: var(--bg-surface);
+  --text-faint-alias: var(--text-faint);
 }
+
+/* ── Dark theme overrides ── */
+[data-theme="dark"] {
+  /* Backgrounds */
+  --bg-app: #1A1A1E;
+  --bg-surface: #222226;
+  --bg-elevated: #2A2A2E;
+  --bg-hover: #333338;
+  --bg-input: #2D2D32;
+  --bg-badge: #3A3A3F;
+  --bg-toast: #E0DED8;
+  --bg-card: #2A2A2E;
+  --bg-overlay: rgba(0, 0, 0, 0.55);
+
+  /* Borders */
+  --border: #3A3A3F;
+  --border-subtle: #333338;
+  --border-divider: #3A3A3F;
+  --border-chunk: #333338;
+
+  /* Text */
+  --text-primary: #E0DED8;
+  --text-heading: #D4D2CC;
+  --text-secondary: #B0ADA6;
+  --text-muted: #807D76;
+  --text-faint: #6A6762;
+  --text-dimmed: #5A5855;
+  --text-ghost: #4A4845;
+  --text-inverse: #1A1A1E;
+
+  /* Accent (warm terracotta for dark) */
+  --accent: #E08A60;
+  --accent-hover: #D4764A;
+  --accent-text: #E89B70;
+  --accent-bg: #3D2A1E;
+  --accent-active: rgba(224, 138, 96, 0.15);
+  --accent-link: #E08A60;
+
+  /* Search match highlighting */
+  --match-bg: #5C4020;
+  --match-text: #F0C890;
+  --match-row: #2A2518;
+  --match-row-hover: #342E20;
+
+  /* Status */
+  --green-dot: #6FAF68;
+  --status-active-bg: #2A3A28;
+  --status-active-fg: #8ABF84;
+
+  /* On-accent */
+  --text-on-accent: #FFFFFF;
+
+  /* Editor (code-edit area — inverted in dark) */
+  --editor-border: #C4C0BA;
+  --editor-input: #D0CCC6;
+  --editor-text: #2A2A2E;
+  --editor-text-dim: #5A5855;
+
+  /* Tooltip (inverted in dark) */
+  --tooltip-bg: #E0DED8;
+  --tooltip-text: #1A1A1E;
+
+  /* Scrollbar */
+  --scrollbar-thumb: #4A4845;
+  --scrollbar-hover: #6A6762;
+
+  /* Danger / destructive */
+  --danger: #E06050;
+  --danger-hover: #D04A3A;
+  --danger-bg: #3D2020;
+  --danger-text: #E87060;
+
+  /* Shadows (RGB triplets for rgba usage) */
+  --shadow-color: 0, 0, 0;
+  --shadow-accent: 200, 120, 60;
+  --overlay-white: 50, 50, 55;
+
+  /* Card surfaces */
+  --bg-card-translucent: rgba(42, 42, 46, 0.9);
+  --bg-card-soft: rgba(42, 42, 46, 0.55);
+
+  /* Chat message bubbles */
+  --chat-user-bg: rgba(60, 45, 35, 0.7);
+  --chat-user-border: rgba(90, 65, 45, 0.5);
+  --chat-ai-bg: rgba(42, 42, 46, 0.7);
+  --chat-ai-border: rgba(58, 58, 63, 0.5);
+
+  /* Highlight */
+  --highlight: #E0A030;
+  --highlight-bg: rgba(224, 160, 48, 0.1);
+  --highlight-glow: rgba(224, 160, 48, 0.2);
+  --highlight-badge-bg: rgba(224, 160, 48, 0.3);
+
+  /* Selection */
+  color-scheme: dark;
+}
+
+[data-theme="dark"] ::selection {
+  background: rgba(224, 138, 96, 0.25);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 
 /* ═══════════════════════════════════════════════════════════════════
    Base Styles
@@ -292,6 +465,27 @@ body {
   margin: 12px 0;
 }
 
+/* ── Dark mode chat markdown ── */
+[data-theme="dark"] .chat-markdown { color: var(--text-secondary); }
+[data-theme="dark"] .chat-markdown strong { color: var(--text-primary); }
+[data-theme="dark"] .chat-markdown code {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+[data-theme="dark"] .chat-markdown pre {
+  background: #111114;
+  color: #D4D2CC;
+}
+[data-theme="dark"] .chat-markdown h1,
+[data-theme="dark"] .chat-markdown h2,
+[data-theme="dark"] .chat-markdown h3 { color: var(--text-primary); }
+[data-theme="dark"] .chat-markdown blockquote {
+  border-left-color: var(--border);
+  color: var(--text-muted);
+}
+[data-theme="dark"] .chat-markdown a { color: var(--accent-link); }
+[data-theme="dark"] .chat-markdown hr { border-top-color: var(--border); }
+
 /* Citation badges */
 .cite-badge {
   display: inline-flex;
@@ -362,6 +556,15 @@ body {
 }
 .resize-handle[data-resize-handle-active] {
   opacity: 0.6;
+}
+
+/* ── Chat tab strip — hidden scrollbar ── */
+.chat-tab-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.chat-tab-scroll::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 /* Skeleton shimmer */
@@ -475,4 +678,35 @@ body {
   height: 1px;
   background: #F0EBE2;
   margin: 4px 16px;
+}
+
+/* ── Dark mode cmdk overrides ── */
+[data-theme="dark"] [cmdk-dialog] {
+  background: var(--bg-elevated);
+  box-shadow: 0 24px 64px rgba(0,0,0,.5);
+}
+[data-theme="dark"] [cmdk-input] { color: var(--text-primary); }
+[data-theme="dark"] [cmdk-input]::placeholder { color: var(--text-faint); }
+[data-theme="dark"] [cmdk-group-heading] { color: var(--text-muted); }
+[data-theme="dark"] [cmdk-item] { color: var(--text-primary); }
+[data-theme="dark"] [cmdk-item][data-selected="true"] {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+[data-theme="dark"] [cmdk-overlay] { background: rgba(0, 0, 0, 0.6); }
+[data-theme="dark"] [cmdk-separator] { background: var(--border); }
+[data-theme="dark"] .cite-badge {
+  border-color: var(--border);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+[data-theme="dark"] .cite-badge:hover {
+  background: var(--accent-active);
+  border-color: var(--accent);
+}
+
+/* Spin animation for search spinner */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

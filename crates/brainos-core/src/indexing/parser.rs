@@ -77,9 +77,8 @@ pub fn parse_capture_file(path: &Path) -> Result<Capture> {
         .unwrap_or_default();
 
     let status = match fm.status.as_deref() {
-        Some("active") => CaptureStatus::Active,
-        Some("resolved") => CaptureStatus::Resolved,
-        _ => CaptureStatus::Draft,
+        Some("archived") => CaptureStatus::Archived,
+        _ => CaptureStatus::Active,
     };
 
     Ok(Capture {

@@ -91,28 +91,21 @@ pub struct Link {
     pub label: Option<String>,
 }
 
-/// Capture lifecycle status
+/// Capture lifecycle status — simple two-state model.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CaptureStatus {
     #[default]
-    Draft,
     Active,
-    Resolved,
-    /// Manually archived — excluded from search by default.
+    /// Manually archived — excluded from search and browse by default.
     Archived,
-    /// Auto-expired by decay rules — excluded from search by default.
-    Expired,
 }
 
 impl std::fmt::Display for CaptureStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Draft => write!(f, "draft"),
             Self::Active => write!(f, "active"),
-            Self::Resolved => write!(f, "resolved"),
             Self::Archived => write!(f, "archived"),
-            Self::Expired => write!(f, "expired"),
         }
     }
 }
@@ -265,6 +258,10 @@ pub struct CaptureFilters {
     pub since: Option<NaiveDate>,
     pub until: Option<NaiveDate>,
     pub confidence: Option<String>,
+    /// Filter by status. If None, defaults to "active" (excludes archived).
+    pub status: Option<CaptureStatus>,
+    /// When true, include all statuses (overrides `status` filter).
+    pub include_archived: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

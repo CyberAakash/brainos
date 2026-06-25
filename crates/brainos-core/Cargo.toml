@@ -25,3 +25,4 @@ reqwest.workspace = true
 fastembed.workspace = true
 sqlite-vec.workspace = true
 zerocopy.workspace = true
+ignore = "0.4"

@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 // ── New v2 types ─────────────────────────────────────────────
 
-export type CaptureStatus = "draft" | "active" | "resolved";
+export type CaptureStatus = "active" | "archived";
 
 export interface ProjectInfo {
   name: string;
@@ -76,6 +76,8 @@ export interface CaptureFilters {
   tags?: string[];
   since?: string;
   until?: string;
+  status?: CaptureStatus;
+  include_archived?: boolean;
 }
 
 export interface ChatHistoryItem {
@@ -122,6 +124,28 @@ export interface CreateCaptureOpts {
   icon?: string;
 }
 
+// ── Workspace root types ────────────────────────────────────
+
+export interface WorkspaceRootRow {
+  id: number;
+  path: string;
+  name: string;
+  kind: string;
+}
+
+// ── Workspace file metadata (no content stored) ─────────────
+
+export interface WorkspaceFileRow {
+  id: string;
+  root_id: number;
+  relative_path: string;
+  abs_path: string;
+  file_hash: string;
+  file_size: number;
+  language?: string;
+  modified_at?: string;
+}
+
 // ── API ──────────────────────────────────────────────────────
 
 export const api = {
@@ -160,6 +184,12 @@ export const api = {
   deleteCapture: (id: string) =>
     invoke<void>("delete_capture_file", { id }),
 
+  archiveCapture: (id: string) =>
+    invoke<void>("archive_capture", { id }),
+
+  unarchiveCapture: (id: string) =>
+    invoke<void>("unarchive_capture", { id }),
+
   getSettings: () =>
     invoke<AppSettings>("get_settings"),
 
@@ -183,4 +213,36 @@ export const api = {
 
   syncNow: () =>
     invoke<any>("sync_now"),
+
+  // ── Workspace roots ─────────────────────────────────────────
+  listWorkspaceRoots: () =>
+    invoke<WorkspaceRootRow[]>("list_workspace_roots"),
+
+  addWorkspaceRoot: (path: string, name: string, fileTypes?: string[], excludeDirs?: string[]) =>
+    invoke<WorkspaceRootRow>("add_workspace_root", { path, name, fileTypes, excludeDirs }),
+
+  removeWorkspaceRoot: (rootId: number) =>
+    invoke<void>("remove_workspace_root", { rootId }),
+
+  getWorkspaceRootStats: (rootId: number) =>
+    invoke<number>("get_workspace_root_stats", { rootId }),
+
+  reindexWorkspaceRoot: (rootId: number) =>
+    invoke<void>("reindex_workspace_root", { rootId }),
+
+  cancelIndexing: (rootId: number) =>
+    invoke<boolean>("cancel_indexing", { rootId }),
+
+  getWorkspaceRootExcludes: (rootId: number) =>
+    invoke<string[]>("get_workspace_root_excludes", { rootId }),
+
+  updateWorkspaceRootExcludes: (rootId: number, excludeDirs: string[]) =>
+    invoke<void>("update_workspace_root_excludes", { rootId, excludeDirs }),
+
+  // ── Workspace files (metadata-only) ────────────────────────
+  listWorkspaceFiles: (rootId: number) =>
+    invoke<WorkspaceFileRow[]>("list_workspace_files", { rootId }),
+
+  readWorkspaceFile: (absPath: string) =>
+    invoke<string>("read_workspace_file", { absPath }),
 };

@@ -171,6 +171,7 @@ fn walk_chain(
 /// Does NOT hold any mutex — safe to .await.
 pub async fn call_llm(config: &ChatConfig, context: RagContext) -> Result<ChatResponse> {
     let response = llm::chat(config, &context.messages).await?;
+
     Ok(ChatResponse {
         text: response.text,
         source_ids: context.source_ids,
@@ -217,8 +218,8 @@ fn format_capture_context(capture: &Capture) -> String {
     if let Some(ref pi) = capture.project_info {
         header.push_str(&format!(" — project: {}", pi.name));
     }
-    if capture.status != crate::models::CaptureStatus::Draft {
-        header.push_str(&format!(" [{}]", capture.status));
+    if capture.status == crate::models::CaptureStatus::Archived {
+        header.push_str(" [archived]");
     }
 
     // Summary line (if available, shown before body for quick orientation)

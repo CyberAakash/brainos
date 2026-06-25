@@ -7,11 +7,11 @@ import type { ImperativePanelHandle } from "react-resizable-panels";
 export type View = "browse" | "editor" | "graph" | "chat" | "timeline" | "settings";
 
 import TopBar from "./components/v2/TopBar";
-import ContextSidebar from "./components/v2/ContextSidebar";
-import ChatHistorySidebar from "./components/v2/ChatHistorySidebar";
+import Sidebar from "./components/v2/Sidebar";
 import HomeView from "./components/v2/HomeView";
 import BrowseView from "./components/v2/BrowseView";
 import DetailPanel from "./components/v2/DetailPanel";
+import SearchResultsView from "./components/v2/SearchResultsView";
 import SettingsView from "./components/v2/SettingsView";
 import StatusBar from "./components/v2/StatusBar";
 import CommandPalette from "./components/v2/CommandPalette";
@@ -21,44 +21,86 @@ import { ShortcutsOverlay, useShortcutsOverlay } from "./components/ui";
 
 export default function App() {
   const mainMode = useStore((s) => s.mainMode);
-  const detailOpen = useStore((s) => s.detailOpen);
-  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
+  const leftDock = useStore((s) => s.leftDock);
+  const rightDock = useStore((s) => s.rightDock);
+  const showSearchResults = useStore((s) => s.leftDock.panel === "search" && s.globalSearchResults.length > 0);
+  const isChatPanel = useStore((s) => s.leftDock.panel === "chat");
+  const theme = useStore((s) => s.theme);
   const togglePalette = useStore((s) => s.togglePalette);
-  const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const toggleLeftDock = useStore((s) => s.toggleLeftDock);
   const closePalette = useStore((s) => s.closePalette);
   const closeNew = useStore((s) => s.closeNew);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const openSettings = useStore((s) => s.openSettings);
   const closeSettings = useStore((s) => s.closeSettings);
   const loadCaptures = useStore((s) => s.loadCaptures);
+  const setLeftDockSize = useStore((s) => s.setLeftDockSize);
+  const setRightDockSize = useStore((s) => s.setRightDockSize);
   const shortcuts = useShortcutsOverlay();
 
-  const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  // Apply theme to document root
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  const leftPanelRef = useRef<ImperativePanelHandle>(null);
+  const rightPanelRef = useRef<ImperativePanelHandle>(null);
+
+  // Center panel is empty when mainMode is null and no search results
+  const centerEmpty = mainMode === null && !showSearchResults;
 
   // Load captures on mount
   useEffect(() => {
     loadCaptures();
   }, [loadCaptures]);
 
-  // Sync sidebar panel collapse/expand with store state
+  // Sync left dock panel collapse/expand with store state
   useEffect(() => {
-    const panel = sidebarPanelRef.current;
+    const panel = leftPanelRef.current;
     if (!panel) return;
-    if (sidebarCollapsed && !panel.isCollapsed()) {
+    if (!leftDock.open && !panel.isCollapsed()) {
       panel.collapse();
-    } else if (!sidebarCollapsed && panel.isCollapsed()) {
+    } else if (leftDock.open && panel.isCollapsed()) {
       panel.expand();
     }
-  }, [sidebarCollapsed]);
+  }, [leftDock.open]);
 
-  // When user drags the resize handle to collapse → sync to store
-  const onSidebarCollapse = useCallback(() => {
-    if (!useStore.getState().sidebarCollapsed) toggleSidebar();
-  }, [toggleSidebar]);
+  // Sync right dock panel collapse/expand with store state
+  useEffect(() => {
+    const panel = rightPanelRef.current;
+    if (!panel) return;
+    if (!rightDock.open && !panel.isCollapsed()) {
+      panel.collapse();
+    } else if (rightDock.open && panel.isCollapsed()) {
+      panel.expand();
+    }
+  }, [rightDock.open]);
 
-  const onSidebarExpand = useCallback(() => {
-    if (useStore.getState().sidebarCollapsed) toggleSidebar();
-  }, [toggleSidebar]);
+  // When user drags resize handle to collapse → sync to store
+  const onLeftCollapse = useCallback(() => {
+    if (useStore.getState().leftDock.open) useStore.getState().toggleLeftDock();
+  }, []);
+
+  const onLeftExpand = useCallback(() => {
+    if (!useStore.getState().leftDock.open) useStore.getState().toggleLeftDock();
+  }, []);
+
+  const onRightCollapse = useCallback(() => {
+    if (useStore.getState().rightDock.open) useStore.getState().toggleRightDock();
+  }, []);
+
+  const onRightExpand = useCallback(() => {
+    if (!useStore.getState().rightDock.open) useStore.getState().toggleRightDock();
+  }, []);
+
+  // Persist panel sizes when user resizes
+  const onLeftResize = useCallback((size: number) => {
+    if (size > 0) setLeftDockSize(size);
+  }, [setLeftDockSize]);
+
+  const onRightResize = useCallback((size: number) => {
+    if (size > 0) setRightDockSize(size);
+  }, [setRightDockSize]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -67,9 +109,14 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && key === "k") {
         e.preventDefault();
         togglePalette();
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && key === "f") {
+        e.preventDefault();
+        // Open search in left dock
+        const store = useStore.getState();
+        store.setLeftDockPanel("search");
       } else if ((e.metaKey || e.ctrlKey) && key === "b") {
         e.preventDefault();
-        toggleSidebar();
+        toggleLeftDock();
       } else if ((e.metaKey || e.ctrlKey) && key === ",") {
         e.preventDefault();
         openSettings();
@@ -81,7 +128,7 @@ export default function App() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [togglePalette, toggleSidebar, closePalette, closeNew, openSettings, closeSettings]);
+  }, [togglePalette, toggleLeftDock, closePalette, closeNew, openSettings, closeSettings]);
 
   return (
     <div
@@ -89,50 +136,76 @@ export default function App() {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        background: "#F5F3ED",
+        background: "var(--bg-app)",
         fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
-        color: "#21201C",
+        color: "var(--text-primary)",
         overflow: "hidden",
       }}
     >
       <TopBar />
 
-      {/* Resizable 3-panel layout: Sidebar | Main | Detail */}
-      <PanelGroup direction="horizontal" style={{ flex: 1, overflow: "hidden" }}>
-        {/* ── Sidebar ── */}
+      {/* Resizable dock layout — 2-panel when center empty, 3-panel otherwise */}
+      <PanelGroup
+        key={`${centerEmpty ? "dock-2" : "dock-3"}-${isChatPanel ? "chat" : "nav"}`}
+        direction="horizontal"
+        style={{ flex: 1, overflow: "hidden" }}
+      >
+        {/* ── Left Dock (Explorer / Chat) ── */}
         <Panel
-          ref={sidebarPanelRef}
-          defaultSize={18}
-          minSize={12}
-          maxSize={30}
+          ref={leftPanelRef}
+          defaultSize={centerEmpty
+            ? (rightDock.open ? 50 : 100)
+            : (isChatPanel ? Math.max(leftDock.chatSize, 30) : leftDock.size)}
+          minSize={centerEmpty ? 20 : (isChatPanel ? 25 : 12)}
+          maxSize={centerEmpty ? 100 : (isChatPanel ? 55 : 30)}
           collapsible
           collapsedSize={0}
-          onCollapse={onSidebarCollapse}
-          onExpand={onSidebarExpand}
+          onCollapse={onLeftCollapse}
+          onExpand={onLeftExpand}
+          onResize={onLeftResize}
           order={1}
         >
-          {(mainMode === "home" || mainMode === "chat") ? <ChatHistorySidebar /> : <ContextSidebar />}
+          <Sidebar />
         </Panel>
 
         <PanelResizeHandle className="resize-handle" />
 
-        {/* ── Main content ── */}
-        <Panel defaultSize={detailOpen ? 50 : 78} minSize={30} order={2}>
-          <div style={{ height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            {(mainMode === "home" || mainMode === "chat") && <HomeView />}
-            {mainMode === "browse" && <BrowseView />}
-          </div>
-        </Panel>
-
-        {/* ── Detail panel (conditional) ── */}
-        {detailOpen && (
+        {/* ── Center content — only rendered when active ── */}
+        {!centerEmpty && (
           <>
-            <PanelResizeHandle className="resize-handle" />
-            <Panel defaultSize={32} minSize={20} maxSize={55} order={3}>
-              <DetailPanel />
+            <Panel minSize={20} order={2}>
+              <div style={{ height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                {showSearchResults ? (
+                  <SearchResultsView />
+                ) : (
+                  <>
+                    {mainMode === "home" && <HomeView />}
+                    {mainMode === "browse" && <BrowseView />}
+                  </>
+                )}
+              </div>
             </Panel>
+            <PanelResizeHandle className="resize-handle" />
           </>
         )}
+
+        {/* ── Right Dock (Detail) — always in DOM, collapses to 0 ── */}
+        <Panel
+          ref={rightPanelRef}
+          defaultSize={rightDock.open
+            ? (centerEmpty ? 50 : rightDock.size)
+            : 0}
+          minSize={20}
+          maxSize={centerEmpty ? 100 : 55}
+          collapsible
+          collapsedSize={0}
+          onCollapse={onRightCollapse}
+          onExpand={onRightExpand}
+          onResize={onRightResize}
+          order={3}
+        >
+          <DetailPanel />
+        </Panel>
       </PanelGroup>
 
       <StatusBar />
@@ -149,7 +222,7 @@ export default function App() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "rgba(0,0,0,.45)",
+            background: "var(--bg-overlay)",
             backdropFilter: "blur(4px)",
           }}
           onClick={(e) => { if (e.target === e.currentTarget) closeSettings(); }}
@@ -171,8 +244,8 @@ export default function App() {
         position="bottom-center"
         toastOptions={{
           style: {
-            background: "#2B2823",
-            color: "#F3EFE8",
+            background: "var(--tooltip-bg)",
+            color: "var(--tooltip-text)",
             fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
             fontSize: 13,
             fontWeight: 500,

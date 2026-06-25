@@ -6,43 +6,29 @@ export default function TopBar() {
   const setMainMode = useStore((s) => s.setMainMode);
   const goHome = useStore((s) => s.goHome);
   const togglePalette = useStore((s) => s.togglePalette);
-  const openNew = useStore((s) => s.openNew);
-  const toggleSidebar = useStore((s) => s.toggleSidebar);
   const goBrowse = useStore((s) => s.goBrowse);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const openSettings = useStore((s) => s.openSettings);
 
   const handleGoHome = useCallback(() => {
-    goHome();
-    setMainMode("home");
-  }, [goHome, setMainMode]);
+    if (mainMode === "home") {
+      setMainMode(null);
+    } else {
+      goHome();
+      setMainMode("home");
+    }
+  }, [mainMode, goHome, setMainMode]);
 
-  const handleBrowseAll = useCallback(
-    () => goBrowse("all", null, "All captures"),
-    [goBrowse],
-  );
+  const handleBrowseAll = useCallback(() => {
+    if (mainMode === "browse") {
+      setMainMode(null);
+    } else {
+      goBrowse("all", null, "All captures");
+    }
+  }, [mainMode, goBrowse, setMainMode]);
 
   return (
-    <div style={styles.bar}>
-      {/* Left: sidebar toggle + logo */}
-      <button
-        onClick={toggleSidebar}
-        title="Toggle sidebar (⌘B)"
-        style={styles.iconBtn}
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-        >
-          <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
-          <line x1="8" y1="3.5" x2="8" y2="16.5" />
-        </svg>
-      </button>
-
+    <div style={styles.bar} data-tauri-drag-region>
       <button onClick={handleGoHome} style={styles.logoBtn}>
         <span style={styles.logoDot} />
         <span style={styles.logoText}>BrainOS</span>
@@ -55,7 +41,7 @@ export default function TopBar() {
           title="Home"
           style={{
             ...styles.navBtn,
-            color: mainMode === "home" ? "#BD6A47" : "#8C887E",
+            color: mainMode === "home" ? "var(--accent)" : "var(--text-muted)",
           }}
         >
           <svg
@@ -78,7 +64,7 @@ export default function TopBar() {
           title="All captures"
           style={{
             ...styles.navBtn,
-            color: mainMode === "browse" ? "#BD6A47" : "#8C887E",
+            color: mainMode === "browse" ? "var(--accent)" : "var(--text-muted)",
           }}
         >
           <svg
@@ -106,7 +92,7 @@ export default function TopBar() {
           height="14"
           viewBox="0 0 16 16"
           fill="none"
-          stroke="#8C887E"
+          stroke="var(--text-muted)"
           strokeWidth="1.5"
         >
           <circle cx="7" cy="7" r="4.5" />
@@ -116,28 +102,13 @@ export default function TopBar() {
         <span style={styles.searchKbd}>⌘K</span>
       </button>
 
-      {/* New capture */}
-      <button onClick={openNew} title="New capture" style={styles.newBtn}>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 14 14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-        >
-          <line x1="7" y1="2.5" x2="7" y2="11.5" />
-          <line x1="2.5" y1="7" x2="11.5" y2="7" />
-        </svg>
-      </button>
-
       {/* Settings */}
       <button
         onClick={openSettings}
         title="Settings (⌘,)"
         style={{
           ...styles.iconBtn,
-          color: settingsOpen ? "#BD6A47" : "#8C887E",
+          color: settingsOpen ? "var(--accent)" : "var(--text-muted)",
         }}
       >
         <svg
@@ -150,8 +121,8 @@ export default function TopBar() {
         >
           <line x1="3" y1="6" x2="15" y2="6" />
           <line x1="3" y1="12" x2="15" y2="12" />
-          <circle cx="11" cy="6" r="2.1" fill="#F7F5EF" />
-          <circle cx="7" cy="12" r="2.1" fill="#F7F5EF" />
+          <circle cx="11" cy="6" r="2.1" fill="var(--bg-surface)" />
+          <circle cx="7" cy="12" r="2.1" fill="var(--bg-surface)" />
         </svg>
       </button>
     </div>
@@ -167,9 +138,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    padding: "0 14px",
-    background: "#F7F5EF",
-    borderBottom: "1px solid #E9E5DC",
+    // 78px left padding leaves room for macOS traffic lights
+    padding: "0 14px 0 78px",
+    background: "var(--bg-surface)",
+    borderBottom: "1px solid var(--border)",
   },
 
   /* sidebar toggle / gear */
@@ -181,7 +153,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     border: "none",
     background: "transparent",
-    color: "#8C887E",
+    color: "var(--text-muted)",
     borderRadius: 7,
     cursor: "pointer",
   },
@@ -200,7 +172,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 9,
     height: 9,
     borderRadius: "50%",
-    background: "#BD6A47",
+    background: "var(--accent)",
     display: "inline-block",
   },
   logoText: {
@@ -208,7 +180,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 20,
     fontWeight: 500,
     fontStyle: "italic",
-    color: "#21201C",
+    color: "var(--text-primary)",
     letterSpacing: "-0.01em",
   },
 
@@ -238,37 +210,23 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    background: "#FFFFFF",
-    border: "1px solid #E7E1D6",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-subtle)",
     borderRadius: 8,
     padding: "6px 9px",
     cursor: "pointer",
   },
   searchLabel: {
     fontSize: 13,
-    color: "#9A968B",
+    color: "var(--text-faint)",
   },
   searchKbd: {
     fontFamily: "ui-monospace, Menlo, monospace",
     fontSize: 11,
-    color: "#A8A398",
-    background: "#F2EDE3",
+    color: "var(--text-dimmed)",
+    background: "var(--bg-input)",
     borderRadius: 5,
     padding: "2px 5px",
   },
 
-  /* new capture */
-  newBtn: {
-    width: 32,
-    height: 32,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border: "none",
-    background: "#BD6A47",
-    color: "#FFF",
-    borderRadius: 9,
-    cursor: "pointer",
-    boxShadow: "0 1px 3px rgba(120,60,30,.3)",
-  },
 };

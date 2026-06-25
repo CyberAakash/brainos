@@ -33,9 +33,34 @@ export function randomIcon(): string {
 }
 
 // ─── Types ───
-export type MainMode = "home" | "browse" | "chat" | "settings";
+export type MainMode = "home" | "browse" | null;
 export type RagMode = "auto" | "manual";
 export type PaletteMode = "search" | "attach";
+export type SidebarTab = "chat" | "explorer" | "search";
+
+// ─── Dock system (Zed-style) ───
+export type LeftDockPanel = "explorer" | "chat" | "search";
+export type RightDockPanel = "detail";
+
+export interface DockState {
+  open: boolean;
+  panel: string;
+  size: number;     // percentage for non-chat panels
+  chatSize: number; // percentage for chat panel (wider)
+}
+
+export type ThemeMode = "light" | "dark";
+
+export interface GlobalSearchMatch {
+  captureId: string;
+  title: string;
+  space: string;
+  captureType: string;
+  icon?: string | null;
+  color?: string | null;
+  lines: { lineNum: number; text: string; matchRanges: [number, number][]; isContext?: boolean }[];
+  matchCount: number;
+}
 
 export interface BrowseFilter {
   kind: "all" | "tag" | "type" | "space" | "project";
@@ -66,13 +91,22 @@ export interface Conversation {
 interface AppState {
   // Navigation
   mainMode: MainMode;
-  sidebarCollapsed: boolean;
-  detailOpen: boolean;
   selectedId: string | null;
+  detailScrollToLine: number | null;
   paletteOpen: boolean;
   paletteMode: PaletteMode;
   newOpen: boolean;
   settingsOpen: boolean;
+
+  // Dock system (Zed-style toggleable panels)
+  leftDock: DockState & { panel: LeftDockPanel };
+  rightDock: DockState & { panel: RightDockPanel };
+  theme: ThemeMode;
+
+  // Legacy compat getters (computed from dock state)
+  /** @deprecated use leftDock.open */ sidebarCollapsed: boolean;
+  /** @deprecated use leftDock.panel */ sidebarTab: SidebarTab;
+  /** @deprecated use rightDock.open && rightDock.panel === "detail" */ detailOpen: boolean;
 
   // RAG
   ragMode: RagMode;
@@ -85,8 +119,14 @@ interface AppState {
   conversations: Conversation[];
   activeConversationId: string | null;
   chatThinking: boolean;
+  editingMessageId: string | null;
   selectedConvoIds: string[];
   showArchived: boolean;
+
+  // Chat panel (P4 — left dock split)
+  openChatTabs: string[];         // conversation IDs open as tabs
+  chatHistoryOpen: boolean;       // toggleable inner sidebar
+  chatHistorySize: number;        // persisted inner split percentage
 
   // Data
   captures: CaptureOverview[];
@@ -99,10 +139,29 @@ interface AppState {
   // Search
   searchResults: SearchResult[];
 
+  // Global search (VS Code style)
+  globalSearchQuery: string;
+  globalSearchCaseSensitive: boolean;
+  globalSearchWholeWord: boolean;
+  globalSearchRegex: boolean;
+  globalSearchResults: GlobalSearchMatch[];
+  globalSearching: boolean;
+
+  // Dock actions
+  toggleLeftDock: () => void;
+  toggleRightDock: () => void;
+  setLeftDockPanel: (panel: LeftDockPanel) => void;
+  setRightDockPanel: (panel: RightDockPanel) => void;
+  setLeftDockSize: (size: number) => void;
+  setRightDockSize: (size: number) => void;
+  setTheme: (mode: ThemeMode) => void;
+  toggleTheme: () => void;
+
   // Actions
   setMainMode: (mode: MainMode) => void;
+  setSidebarTab: (tab: SidebarTab) => void;
   toggleSidebar: () => void;
-  openDetail: (id: string) => void;
+  openDetail: (id: string, lineNum?: number) => void;
   closeDetail: () => void;
   togglePalette: (mode?: PaletteMode) => void;
   openPaletteAttach: () => void;
@@ -142,9 +201,17 @@ interface AppState {
   deleteSelectedConvos: () => void;
   addMessage: (msg: ChatMessage) => void;
   removeLastMessage: () => ChatMessage | null;
+  setEditingMessageId: (id: string | null) => void;
+  truncateFromMessage: (msgId: string) => void;
   setChatThinking: (v: boolean) => void;
   getActiveConversation: () => Conversation | null;
   getAttached: () => string[];
+
+  // Chat tab actions (P4)
+  openChatTab: (id: string) => void;
+  closeChatTab: (id: string) => void;
+  toggleChatHistory: () => void;
+  setChatHistorySize: (size: number) => void;
 
   // Browse
   setBrowseFilter: (filter: BrowseFilter) => void;
@@ -157,6 +224,13 @@ interface AppState {
   explorerSearch: string;
   setExplorerSearch: (q: string) => void;
 
+  // Global search actions
+  setGlobalSearchQuery: (q: string) => void;
+  toggleGlobalSearchCase: () => void;
+  toggleGlobalSearchWholeWord: () => void;
+  toggleGlobalSearchRegex: () => void;
+  runGlobalSearch: () => Promise<void>;
+
   // Toast (uses sonner)
   showToast: (msg: string) => void;
 
@@ -165,6 +239,8 @@ interface AppState {
   loadCapture: (id: string) => Promise<Capture | null>;
   searchCaptures: (query: string) => Promise<SearchResult[]>;
   deleteCapture: (id: string) => Promise<void>;
+  archiveCapture: (id: string) => Promise<void>;
+  unarchiveCapture: (id: string) => Promise<void>;
   createCapture: (title: string, space: string, captureType: string, tags: string[], body: string, opts?: CreateCaptureOpts) => Promise<Capture | null>;
 }
 
@@ -206,11 +282,28 @@ function makeConvoId() {
   return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function loadTheme(): ThemeMode {
+  try {
+    const raw = localStorage.getItem("brainos_theme");
+    return raw === "dark" ? "dark" : "light";
+  } catch { return "light"; }
+}
+
 export const useStore = create<AppState>((set, get) => ({
   mainMode: "home",
+
+  // Dock system
+  leftDock: { open: true, panel: "explorer" as LeftDockPanel, size: 18, chatSize: 32 },
+  rightDock: { open: false, panel: "detail" as RightDockPanel, size: 32, chatSize: 32 },
+  theme: loadTheme(),
+
+  // Legacy compat (computed from dock state on reads; actions keep them in sync)
   sidebarCollapsed: false,
+  sidebarTab: "explorer" as SidebarTab,
   detailOpen: false,
+
   selectedId: null,
+  detailScrollToLine: null,
   paletteOpen: false,
   paletteMode: "search" as PaletteMode,
   newOpen: false,
@@ -221,8 +314,12 @@ export const useStore = create<AppState>((set, get) => ({
   conversations: loadConversations(),
   activeConversationId: null,
   chatThinking: false,
+  editingMessageId: null,
   selectedConvoIds: [],
   showArchived: false,
+  openChatTabs: [],
+  chatHistoryOpen: true,
+  chatHistorySize: 35,
   captures: [],
   captureCache: {},
   loading: false,
@@ -230,12 +327,75 @@ export const useStore = create<AppState>((set, get) => ({
   selectedTags: [],
   explorerSearch: "",
   searchResults: [],
+  globalSearchQuery: "",
+  globalSearchCaseSensitive: false,
+  globalSearchWholeWord: false,
+  globalSearchRegex: false,
+  globalSearchResults: [],
+  globalSearching: false,
 
-  // Navigation
+  // Dock actions
+  toggleLeftDock: () => set((s) => {
+    const open = !s.leftDock.open;
+    return { leftDock: { ...s.leftDock, open }, sidebarCollapsed: !open };
+  }),
+  toggleRightDock: () => set((s) => {
+    const open = !s.rightDock.open;
+    return { rightDock: { ...s.rightDock, open }, detailOpen: open && s.rightDock.panel === "detail" };
+  }),
+  setLeftDockPanel: (panel) => set((s) => {
+    // If same panel, toggle the dock
+    if (s.leftDock.panel === panel && s.leftDock.open) {
+      return { leftDock: { ...s.leftDock, open: false }, sidebarCollapsed: true };
+    }
+    return { leftDock: { ...s.leftDock, panel, open: true }, sidebarCollapsed: false, sidebarTab: panel as SidebarTab };
+  }),
+  setRightDockPanel: (panel) => set((s) => {
+    // If same panel, toggle the dock
+    if (s.rightDock.panel === panel && s.rightDock.open) {
+      return { rightDock: { ...s.rightDock, open: false }, detailOpen: false };
+    }
+    return { rightDock: { ...s.rightDock, panel, open: true }, detailOpen: panel === "detail" };
+  }),
+  setLeftDockSize: (size) => set((s) => ({
+    leftDock: {
+      ...s.leftDock,
+      ...(s.leftDock.panel === "chat" ? { chatSize: size } : { size }),
+    },
+  })),
+  setRightDockSize: (size) => set((s) => ({ rightDock: { ...s.rightDock, size } })),
+  setTheme: (mode) => {
+    localStorage.setItem("brainos_theme", mode);
+    set({ theme: mode });
+  },
+  toggleTheme: () => {
+    const next = get().theme === "light" ? "dark" : "light";
+    localStorage.setItem("brainos_theme", next);
+    set({ theme: next });
+  },
+
+  // Navigation (legacy-compat wrappers that delegate to dock state)
   setMainMode: (mode) => set({ mainMode: mode }),
-  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  openDetail: (id) => set({ selectedId: id, detailOpen: true }),
-  closeDetail: () => set({ detailOpen: false }),
+  setSidebarTab: (tab) => set((s) => ({
+    sidebarTab: tab,
+    leftDock: { ...s.leftDock, panel: (tab === "search" ? s.leftDock.panel : tab) as LeftDockPanel, open: true },
+    sidebarCollapsed: false,
+  })),
+  toggleSidebar: () => set((s) => {
+    const open = !s.leftDock.open;
+    return { leftDock: { ...s.leftDock, open }, sidebarCollapsed: !open };
+  }),
+  openDetail: (id, lineNum) => set((s) => ({
+    selectedId: id,
+    detailOpen: true,
+    detailScrollToLine: lineNum ?? null,
+    rightDock: { ...s.rightDock, panel: "detail" as RightDockPanel, open: true },
+  })),
+  closeDetail: () => set((s) => ({
+    detailOpen: false,
+    detailScrollToLine: null,
+    rightDock: { ...s.rightDock, open: false },
+  })),
   togglePalette: (mode?: PaletteMode) => set((s) => ({
     paletteOpen: !s.paletteOpen,
     paletteMode: mode || "search",
@@ -246,7 +406,7 @@ export const useStore = create<AppState>((set, get) => ({
   closeNew: () => set({ newOpen: false }),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
-  goHome: () => set({ activeConversationId: null, chatThinking: false }),
+  goHome: () => set({ activeConversationId: null, chatThinking: false, editingMessageId: null }),
   setRagMode: (mode) => set({ ragMode: mode }),
   toggleRag: () => set((s) => ({ ragMode: s.ragMode === "auto" ? "manual" : "auto" })),
 
@@ -328,17 +488,26 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => {
       const convos = [convo, ...s.conversations];
       saveConversations(convos);
-      return { conversations: convos, activeConversationId: id, chatThinking: false, showArchived: false };
+      const tabs = s.openChatTabs.includes(id) ? s.openChatTabs : [...s.openChatTabs, id];
+      return { conversations: convos, activeConversationId: id, chatThinking: false, showArchived: false, openChatTabs: tabs };
     });
     return id;
   },
-  switchConversation: (id) => set({ activeConversationId: id, chatThinking: false }),
+  switchConversation: (id) => set((s) => {
+    const tabs = s.openChatTabs.includes(id) ? s.openChatTabs : [...s.openChatTabs, id];
+    return { activeConversationId: id, chatThinking: false, editingMessageId: null, openChatTabs: tabs };
+  }),
   deleteConversation: (id) => set((s) => {
     const convos = s.conversations.filter((c) => c.id !== id);
     saveConversations(convos);
+    const tabs = s.openChatTabs.filter((t) => t !== id);
+    const nextActive = s.activeConversationId === id
+      ? (tabs.length > 0 ? tabs[tabs.length - 1] : null)
+      : s.activeConversationId;
     return {
       conversations: convos,
-      activeConversationId: s.activeConversationId === id ? null : s.activeConversationId,
+      activeConversationId: nextActive,
+      openChatTabs: tabs,
       selectedConvoIds: s.selectedConvoIds.filter((x) => x !== id),
     };
   }),
@@ -432,6 +601,19 @@ export const useStore = create<AppState>((set, get) => ({
     });
     return removed;
   },
+  setEditingMessageId: (id) => set({ editingMessageId: id }),
+  truncateFromMessage: (msgId) => {
+    set((s) => {
+      const convos = s.conversations.map((c) => {
+        if (c.id !== s.activeConversationId) return c;
+        const idx = c.messages.findIndex((m) => m.id === msgId);
+        if (idx < 0) return c;
+        return { ...c, messages: c.messages.slice(0, idx), updatedAt: Date.now() };
+      });
+      saveConversations(convos);
+      return { conversations: convos, editingMessageId: null };
+    });
+  },
   setChatThinking: (v) => set({ chatThinking: v }),
   getActiveConversation: () => {
     const s = get();
@@ -442,6 +624,22 @@ export const useStore = create<AppState>((set, get) => ({
     const convo = s.conversations.find((c) => c.id === s.activeConversationId);
     return convo ? convo.attached : [];
   },
+
+  // Chat tab actions (P4)
+  openChatTab: (id) => set((s) => {
+    const tabs = s.openChatTabs.includes(id) ? s.openChatTabs : [...s.openChatTabs, id];
+    return { openChatTabs: tabs, activeConversationId: id, chatThinking: false, editingMessageId: null };
+  }),
+  closeChatTab: (id) => set((s) => {
+    const tabs = s.openChatTabs.filter((t) => t !== id);
+    // If closing the active tab, switch to the last remaining tab (or null)
+    const nextActive = s.activeConversationId === id
+      ? (tabs.length > 0 ? tabs[tabs.length - 1] : null)
+      : s.activeConversationId;
+    return { openChatTabs: tabs, activeConversationId: nextActive, chatThinking: false, editingMessageId: null };
+  }),
+  toggleChatHistory: () => set((s) => ({ chatHistoryOpen: !s.chatHistoryOpen })),
+  setChatHistorySize: (size) => set({ chatHistorySize: size }),
 
   // Browse
   setBrowseFilter: (filter) => set({ browseFilter: filter }),
@@ -454,6 +652,133 @@ export const useStore = create<AppState>((set, get) => ({
   clearTags: () => set({ selectedTags: [] }),
   setExplorerSearch: (q) => set({ explorerSearch: q }),
 
+  // Global search
+  setGlobalSearchQuery: (q) => set({ globalSearchQuery: q }),
+  toggleGlobalSearchCase: () => set((s) => ({ globalSearchCaseSensitive: !s.globalSearchCaseSensitive })),
+  toggleGlobalSearchWholeWord: () => set((s) => ({ globalSearchWholeWord: !s.globalSearchWholeWord })),
+  toggleGlobalSearchRegex: () => set((s) => ({ globalSearchRegex: !s.globalSearchRegex })),
+  runGlobalSearch: async () => {
+    const { globalSearchQuery: q, globalSearchCaseSensitive: caseSen, globalSearchWholeWord: wholeWord, globalSearchRegex: useRegex, captures } = get();
+    if (!q.trim()) { set({ globalSearchResults: [] }); return; }
+
+    set({ globalSearching: true });
+    try {
+      // Build matcher
+      let matcher: (text: string) => [number, number][];
+      if (useRegex) {
+        try {
+          const flags = caseSen ? "g" : "gi";
+          const rx = new RegExp(q, flags);
+          matcher = (text) => {
+            const ranges: [number, number][] = [];
+            let m: RegExpExecArray | null;
+            while ((m = rx.exec(text)) !== null) {
+              ranges.push([m.index, m.index + m[0].length]);
+              if (!rx.global) break;
+            }
+            return ranges;
+          };
+        } catch {
+          set({ globalSearching: false }); return; // invalid regex
+        }
+      } else if (wholeWord) {
+        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const flags = caseSen ? "g" : "gi";
+        const rx = new RegExp(`\\b${escaped}\\b`, flags);
+        matcher = (text) => {
+          const ranges: [number, number][] = [];
+          let m: RegExpExecArray | null;
+          while ((m = rx.exec(text)) !== null) {
+            ranges.push([m.index, m.index + m[0].length]);
+          }
+          return ranges;
+        };
+      } else {
+        const needle = caseSen ? q : q.toLowerCase();
+        matcher = (text) => {
+          const hay = caseSen ? text : text.toLowerCase();
+          const ranges: [number, number][] = [];
+          let idx = 0;
+          while ((idx = hay.indexOf(needle, idx)) !== -1) {
+            ranges.push([idx, idx + needle.length]);
+            idx += needle.length;
+          }
+          return ranges;
+        };
+      }
+
+      // Load full captures and search their bodies + metadata
+      const results: GlobalSearchMatch[] = [];
+      for (const ov of captures) {
+        let cap = get().captureCache[ov.id];
+        if (!cap) {
+          try { cap = (await api.getCapture(ov.id))!; } catch { continue; }
+          if (!cap) continue;
+          set((s) => ({ captureCache: { ...s.captureCache, [cap!.id]: cap! } }));
+        }
+
+        // Search the body text only (title shown in header)
+        const bodyText = cap.body_text || "";
+        const lines = bodyText.split("\n");
+        const matchLineIndices = new Set<number>();
+        let totalMatches = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+          const ranges = matcher(lines[i]);
+          if (ranges.length > 0) {
+            totalMatches += ranges.length;
+            matchLineIndices.add(i);
+          }
+        }
+
+        // Also search title + tags + summary for match count
+        const metaText = [cap.title, cap.tags.join(" "), cap.summary || ""].join("\n");
+        for (const metaLine of metaText.split("\n")) {
+          totalMatches += matcher(metaLine).length;
+        }
+
+        if (totalMatches === 0) continue;
+
+        // Build lines with 1-line context above/below
+        const contextIndices = new Set<number>();
+        for (const idx of matchLineIndices) {
+          if (idx > 0) contextIndices.add(idx - 1);
+          contextIndices.add(idx);
+          if (idx < lines.length - 1) contextIndices.add(idx + 1);
+        }
+
+        const sortedIndices = [...contextIndices].sort((a, b) => a - b);
+        const matchLines: GlobalSearchMatch["lines"] = [];
+        for (const idx of sortedIndices) {
+          const isMatch = matchLineIndices.has(idx);
+          const ranges = isMatch ? matcher(lines[idx]) : [];
+          matchLines.push({
+            lineNum: idx + 1,
+            text: lines[idx],
+            matchRanges: ranges,
+            isContext: !isMatch,
+          });
+          if (matchLines.length >= 20) break; // limit lines per capture
+        }
+
+        results.push({
+          captureId: cap.id,
+          title: cap.title,
+          space: cap.space,
+          captureType: cap.capture_type,
+          icon: cap.icon,
+          color: cap.color,
+          lines: matchLines,
+          matchCount: totalMatches,
+        });
+      }
+
+      set({ globalSearchResults: results, globalSearching: false });
+    } catch {
+      set({ globalSearching: false });
+    }
+  },
+
   // Toast (delegates to sonner)
   showToast: (msg) => {
     toast(msg, { duration: 2200 });
@@ -463,7 +788,7 @@ export const useStore = create<AppState>((set, get) => ({
   loadCaptures: async () => {
     set({ loading: true });
     try {
-      const captures = await api.listCaptures({}, 100, 0);
+      const captures = await api.listCaptures({ include_archived: true }, 500, 0);
       set({ captures, loading: false });
     } catch (e) {
       console.error("Failed to load captures:", e);
@@ -513,6 +838,7 @@ export const useStore = create<AppState>((set, get) => ({
           favorites: (() => { const next = s.favorites.filter((x) => x !== id); saveFavorites(next); return next; })(),
           suggested: s.suggested.filter((x) => x !== id),
           detailOpen: s.selectedId === id ? false : s.detailOpen,
+          rightDock: s.selectedId === id ? { ...s.rightDock, open: false } : s.rightDock,
           selectedId: s.selectedId === id ? null : s.selectedId,
         };
       });
@@ -520,6 +846,34 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (e) {
       console.error("Failed to delete:", e);
       get().showToast("Delete failed");
+    }
+  },
+
+  archiveCapture: async (id) => {
+    try {
+      await api.archiveCapture(id);
+      set((s) => ({
+        captures: s.captures.map((c) => c.id === id ? { ...c, status: "archived" as const } : c),
+        captureCache: s.captureCache[id] ? { ...s.captureCache, [id]: { ...s.captureCache[id], status: "archived" as const } } : s.captureCache,
+      }));
+      get().showToast("Capture archived");
+    } catch (e) {
+      console.error("Failed to archive:", e);
+      get().showToast("Archive failed");
+    }
+  },
+
+  unarchiveCapture: async (id) => {
+    try {
+      await api.unarchiveCapture(id);
+      set((s) => ({
+        captures: s.captures.map((c) => c.id === id ? { ...c, status: "active" as const } : c),
+        captureCache: s.captureCache[id] ? { ...s.captureCache, [id]: { ...s.captureCache[id], status: "active" as const } } : s.captureCache,
+      }));
+      get().showToast("Capture restored");
+    } catch (e) {
+      console.error("Failed to unarchive:", e);
+      get().showToast("Restore failed");
     }
   },
 
@@ -541,6 +895,7 @@ export const useStore = create<AppState>((set, get) => ({
         newOpen: false,
         selectedId: capture.id,
         detailOpen: true,
+        rightDock: { ...s.rightDock, panel: "detail" as RightDockPanel, open: true },
       }));
       get().showToast("Capture created");
       return capture;

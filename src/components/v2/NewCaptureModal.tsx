@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useStore } from "@/store";
-import type { CaptureStatus } from "@/lib/ipc";
+import { api } from "@/lib/ipc";
 
 /* ────── NewCaptureModal ────── */
 
 const SPACES = ["work", "personal", "wiki"] as const;
-const STATUSES: CaptureStatus[] = ["draft", "active", "resolved"];
 
 export default function NewCaptureModal() {
   const newOpen = useStore((s) => s.newOpen);
@@ -16,7 +16,6 @@ export default function NewCaptureModal() {
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [space, setSpace] = useState<"work" | "personal" | "wiki">("work");
-  const [status, setStatus] = useState<CaptureStatus>("draft");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [body, setBody] = useState("");
@@ -30,7 +29,6 @@ export default function NewCaptureModal() {
       setTitle("");
       setSummary("");
       setSpace("work");
-      setStatus("draft");
       setTags([]);
       setTagInput("");
       setBody("");
@@ -73,6 +71,77 @@ export default function NewCaptureModal() {
     [addTag, tagInput, tags],
   );
 
+  // ── .md file upload ──
+  const handleUploadMd = useCallback(async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+      });
+      if (!selected) return; // user cancelled
+      const filePath = typeof selected === "string" ? selected : (selected as any).path ?? String(selected);
+      if (!filePath) return;
+      const raw = await api.readWorkspaceFile(filePath);
+
+      // Parse YAML frontmatter (between --- delimiters)
+      let frontmatter: Record<string, any> = {};
+      let bodyContent = raw;
+      const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+      if (fmMatch) {
+        bodyContent = fmMatch[2];
+        // Simple YAML key: value parser (handles strings, arrays)
+        for (const line of fmMatch[1].split("\n")) {
+          const kv = line.match(/^(\w[\w_-]*):\s*(.*)$/);
+          if (kv) {
+            const key = kv[1].toLowerCase();
+            let val = kv[2].trim();
+            // Handle array shorthand: [a, b, c]
+            if (val.startsWith("[") && val.endsWith("]")) {
+              frontmatter[key] = val.slice(1, -1).split(",").map((s: string) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+            } else {
+              frontmatter[key] = val.replace(/^["']|["']$/g, "");
+            }
+          }
+          // Handle YAML list items (  - item)
+          if (line.match(/^\s+-\s+/)) {
+            // Append to last key
+            const lastKey = Object.keys(frontmatter).pop();
+            if (lastKey) {
+              const item = line.replace(/^\s+-\s+/, "").trim().replace(/^["']|["']$/g, "");
+              if (!Array.isArray(frontmatter[lastKey])) {
+                frontmatter[lastKey] = frontmatter[lastKey] ? [frontmatter[lastKey]] : [];
+              }
+              (frontmatter[lastKey] as string[]).push(item);
+            }
+          }
+        }
+      }
+
+      // Extract filename as fallback title
+      const fileName = filePath.split(/[\\/]/).pop()?.replace(/\.md$/, "") || "";
+
+      // Apply extracted frontmatter to form
+      if (frontmatter.title || fileName) setTitle(frontmatter.title || fileName);
+      if (frontmatter.summary) setSummary(frontmatter.summary);
+      if (frontmatter.space && ["work", "personal", "wiki"].includes(frontmatter.space)) {
+        setSpace(frontmatter.space as "work" | "personal" | "wiki");
+      }
+      if (frontmatter.tags) {
+        const parsedTags = Array.isArray(frontmatter.tags) ? frontmatter.tags : [frontmatter.tags];
+        setTags(parsedTags.map((t: string) => t.replace(/^#/, "")));
+      }
+      if (frontmatter.project || frontmatter.project_name) {
+        setProjectName(frontmatter.project || frontmatter.project_name);
+        setShowAdvanced(true);
+      }
+      setBody(bodyContent.trim());
+      showToast("Imported from " + (fileName || "file") + ".md");
+    } catch (err) {
+      showToast("Failed to read file");
+      console.error("Upload .md error:", err);
+    }
+  }, [showToast]);
+
   const handleCreate = useCallback(async () => {
     if (!title.trim()) {
       showToast("Add a title first");
@@ -80,11 +149,10 @@ export default function NewCaptureModal() {
     }
     const opts: any = {};
     if (summary.trim()) opts.summary = summary.trim();
-    if (status !== "draft") opts.status = status;
     if (projectName.trim()) opts.projectName = projectName.trim();
     if (projectPath.trim()) opts.projectPath = projectPath.trim();
     await createCapture(title.trim(), space, "note", tags, body, Object.keys(opts).length ? opts : undefined);
-  }, [title, summary, space, status, tags, body, projectName, projectPath, createCapture, showToast]);
+  }, [title, summary, space, tags, body, projectName, projectPath, createCapture, showToast]);
 
   if (!newOpen) return null;
 
@@ -122,41 +190,22 @@ export default function NewCaptureModal() {
           style={S.summaryInput}
         />
 
-        {/* ── Space + Status ── */}
-        <div style={S.twoCol}>
-          <div>
-            <label style={S.fieldLabel}>SPACE</label>
-            <div style={S.segmentedRow}>
-              {SPACES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSpace(s)}
-                  style={{
-                    ...S.segmentBtn,
-                    ...(space === s ? S.segmentActive : S.segmentInactive),
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={S.fieldLabel}>STATUS</label>
-            <div style={S.segmentedRow}>
-              {STATUSES.map((st) => (
-                <button
-                  key={st}
-                  onClick={() => setStatus(st)}
-                  style={{
-                    ...S.segmentBtn,
-                    ...(status === st ? S.segmentActive : S.segmentInactive),
-                  }}
-                >
-                  {st}
-                </button>
-              ))}
-            </div>
+        {/* ── Space ── */}
+        <div>
+          <label style={S.fieldLabel}>SPACE</label>
+          <div style={S.segmentedRow}>
+            {SPACES.map((s) => (
+              <button
+                key={s}
+                onClick={() => setSpace(s)}
+                style={{
+                  ...S.segmentBtn,
+                  ...(space === s ? S.segmentActive : S.segmentInactive),
+                }}
+              >
+                {s}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -229,7 +278,14 @@ export default function NewCaptureModal() {
 
         {/* ── Footer ── */}
         <div style={S.footer}>
-          <span style={S.footerHint}>Saved to your knowledge base</span>
+          <button style={S.uploadBtn} onClick={handleUploadMd} title="Import from .md file">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 10v3a1 1 0 01-1 1H3a1 1 0 01-1-1v-3" />
+              <polyline points="4 6 8 2 12 6" />
+              <line x1="8" y1="2" x2="8" y2="11" />
+            </svg>
+            Upload .md
+          </button>
           <div style={S.footerBtns}>
             <button style={S.cancelBtn} onClick={closeNew}>
               Cancel
@@ -250,7 +306,7 @@ const S: Record<string, React.CSSProperties> = {
   backdrop: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.35)",
+    background: "var(--bg-overlay)",
     zIndex: 50,
     display: "flex",
     alignItems: "center",
@@ -259,10 +315,10 @@ const S: Record<string, React.CSSProperties> = {
   },
   dialog: {
     width: 540,
-    background: "#FFFFFF",
+    background: "var(--bg-card)",
     borderRadius: 16,
     padding: 28,
-    boxShadow: "0 20px 60px rgba(0,0,0,.18)",
+    boxShadow: "0 20px 60px rgba(var(--shadow-color), .18)",
     display: "flex",
     flexDirection: "column",
     animation: "scaleIn 0.18s ease-out",
@@ -286,14 +342,14 @@ const S: Record<string, React.CSSProperties> = {
     width: 10,
     height: 10,
     borderRadius: "50%",
-    background: "#BD6A47",
+    background: "var(--accent)",
     display: "inline-block",
   },
   headerTitle: {
     fontFamily: "'Newsreader', Georgia, serif",
     fontSize: 20,
     fontWeight: 600,
-    color: "#21201C",
+    color: "var(--text-primary)",
   },
   closeBtn: {
     width: 28,
@@ -303,7 +359,7 @@ const S: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     border: "none",
     background: "transparent",
-    color: "#9A958A",
+    color: "var(--text-faint)",
     borderRadius: 7,
     cursor: "pointer",
   },
@@ -311,13 +367,13 @@ const S: Record<string, React.CSSProperties> = {
   /* Title input */
   titleInput: {
     border: "none",
-    borderBottom: "1px solid #E9E5DC",
+    borderBottom: "1px solid var(--border)",
     outline: "none",
     background: "transparent",
     fontFamily: "'Newsreader', Georgia, serif",
     fontSize: 20,
     fontWeight: 500,
-    color: "#21201C",
+    color: "var(--text-primary)",
     padding: "8px 0 12px",
     marginBottom: 8,
     width: "100%",
@@ -330,7 +386,7 @@ const S: Record<string, React.CSSProperties> = {
     background: "transparent",
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
     fontSize: 13.5,
-    color: "#56524A",
+    color: "var(--text-secondary)",
     padding: "4px 0 12px",
     marginBottom: 14,
     width: "100%",
@@ -341,7 +397,7 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: "0.06em",
-    color: "#56524A",
+    color: "var(--text-secondary)",
     marginBottom: 8,
     display: "block",
   },
@@ -354,7 +410,7 @@ const S: Record<string, React.CSSProperties> = {
   },
   segmentedRow: {
     display: "inline-flex",
-    background: "#F0EBE1",
+    background: "var(--bg-input)",
     borderRadius: 9,
     padding: 3,
     gap: 2,
@@ -370,13 +426,13 @@ const S: Record<string, React.CSSProperties> = {
     transition: "all 0.12s",
   },
   segmentActive: {
-    background: "#FFFFFF",
-    color: "#21201C",
-    boxShadow: "0 1px 3px rgba(0,0,0,.08)",
+    background: "var(--bg-card)",
+    color: "var(--text-primary)",
+    boxShadow: "0 1px 3px rgba(var(--shadow-color), .08)",
   },
   segmentInactive: {
     background: "transparent",
-    color: "#8C887E",
+    color: "var(--text-muted)",
   },
 
   /* Tags */
@@ -385,7 +441,7 @@ const S: Record<string, React.CSSProperties> = {
     flexWrap: "wrap" as const,
     alignItems: "center",
     gap: 6,
-    border: "1px solid #E7E1D6",
+    border: "1px solid var(--border)",
     borderRadius: 10,
     padding: "8px 12px",
     marginBottom: 14,
@@ -397,15 +453,15 @@ const S: Record<string, React.CSSProperties> = {
     gap: 4,
     fontSize: 12,
     fontWeight: 500,
-    color: "#56524A",
-    background: "#F0EBE1",
+    color: "var(--text-secondary)",
+    background: "var(--bg-input)",
     borderRadius: 6,
     padding: "3px 8px",
   },
   tagRemove: {
     border: "none",
     background: "transparent",
-    color: "#9A958A",
+    color: "var(--text-faint)",
     cursor: "pointer",
     fontSize: 14,
     lineHeight: 1,
@@ -420,7 +476,7 @@ const S: Record<string, React.CSSProperties> = {
     background: "transparent",
     fontSize: 13,
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
-    color: "#21201C",
+    color: "var(--text-primary)",
   },
 
   /* Advanced section */
@@ -430,7 +486,7 @@ const S: Record<string, React.CSSProperties> = {
     gap: 6,
     fontSize: 12,
     fontWeight: 500,
-    color: "#9A958A",
+    color: "var(--text-faint)",
     background: "transparent",
     border: "none",
     cursor: "pointer",
@@ -442,12 +498,12 @@ const S: Record<string, React.CSSProperties> = {
   },
   textInput: {
     width: "100%",
-    border: "1px solid #E7E1D6",
+    border: "1px solid var(--border)",
     borderRadius: 8,
     padding: "7px 10px",
     fontSize: 13,
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
-    color: "#21201C",
+    color: "var(--text-primary)",
     outline: "none",
     background: "transparent",
   },
@@ -455,12 +511,12 @@ const S: Record<string, React.CSSProperties> = {
   /* Body textarea */
   bodyTextarea: {
     minHeight: 140,
-    border: "1px solid #E7E1D6",
+    border: "1px solid var(--border)",
     borderRadius: 10,
     padding: "12px 14px",
     fontSize: 13.5,
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
-    color: "#21201C",
+    color: "var(--text-primary)",
     background: "transparent",
     resize: "vertical" as const,
     outline: "none",
@@ -474,18 +530,29 @@ const S: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
   },
-  footerHint: {
-    fontSize: 12,
-    color: "#9A958A",
+  uploadBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    border: "1px solid var(--border-subtle)",
+    background: "var(--bg-surface)",
+    color: "var(--text-muted)",
+    fontSize: 12.5,
+    fontWeight: 500,
+    fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
+    padding: "7px 14px",
+    borderRadius: 8,
+    cursor: "pointer",
+    transition: "all .12s",
   },
   footerBtns: {
     display: "flex",
     gap: 10,
   },
   cancelBtn: {
-    border: "1px solid #E7E1D6",
-    background: "#FFFFFF",
-    color: "#56524A",
+    border: "1px solid var(--border)",
+    background: "var(--bg-card)",
+    color: "var(--text-secondary)",
     fontSize: 13,
     fontWeight: 500,
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
@@ -495,14 +562,14 @@ const S: Record<string, React.CSSProperties> = {
   },
   createBtn: {
     border: "none",
-    background: "#BD6A47",
-    color: "#FFFFFF",
+    background: "var(--accent)",
+    color: "var(--text-on-accent)",
     fontSize: 13,
     fontWeight: 600,
     fontFamily: "'Hanken Grotesk', system-ui, sans-serif",
     padding: "9px 22px",
     borderRadius: 9,
     cursor: "pointer",
-    boxShadow: "0 1px 4px rgba(120,60,30,.25)",
+    boxShadow: "0 1px 4px rgba(var(--shadow-accent), .25)",
   },
 };
