@@ -216,8 +216,16 @@ fn extract_query_entities(query: &str) -> Vec<String> {
 }
 
 fn overview_from_capture(c: &crate::models::Capture) -> CaptureOverview {
+    let body_preview = if c.body_text.len() > 200 {
+        Some(c.body_text[..200].to_string())
+    } else if !c.body_text.is_empty() {
+        Some(c.body_text.clone())
+    } else {
+        None
+    };
     CaptureOverview {
         id: c.id.clone(),
+        file_path: c.file_path.clone(),
         title: c.title.clone(),
         summary: c.summary.clone(),
         space: c.space.clone(),
@@ -228,5 +236,6 @@ fn overview_from_capture(c: &crate::models::Capture) -> CaptureOverview {
         projects: c.projects.clone(),
         color: c.color.clone(),
         icon: c.icon.clone(),
+        body_preview,
     }
 }

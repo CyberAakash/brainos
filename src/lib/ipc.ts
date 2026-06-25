@@ -35,6 +35,7 @@ export interface Link {
 
 export interface CaptureOverview {
   id: string;
+  file_path: string;
   title: string;
   summary?: string;
   space: "work" | "personal" | "wiki";
@@ -45,10 +46,10 @@ export interface CaptureOverview {
   projects: string[];
   color?: string;
   icon?: string;
+  body_preview?: string;
 }
 
 export interface Capture extends CaptureOverview {
-  file_path: string;
   file_hash: string;
   confidence?: string;
   repo?: string;
@@ -61,6 +62,9 @@ export interface Capture extends CaptureOverview {
   chain?: Chain;
   links: Link[];
   body_text: string;
+  capture_mode?: string;
+  updated?: string;
+  session_ref?: string;
 }
 
 export interface SearchResult {
@@ -122,6 +126,8 @@ export interface CreateCaptureOpts {
   chainPrev?: string;
   color?: string;
   icon?: string;
+  captureMode?: string;
+  sessionRef?: string;
 }
 
 // ── Workspace root types ────────────────────────────────────

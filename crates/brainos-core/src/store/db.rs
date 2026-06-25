@@ -159,6 +159,17 @@ impl Store {
         // v7 migration: workspace_files (metadata-only, no content)
         self.conn.execute_batch(include_str!("migrations/007_workspace_files.sql"))?;
 
+        // v8 migration: capture system v2 fields (capture_mode, updated, session_ref)
+        {
+            let has_capture_mode: bool = self.conn.prepare("SELECT capture_mode FROM captures LIMIT 0").is_ok();
+            if !has_capture_mode {
+                info!("Running capture v2 fields migration...");
+                self.conn.execute("ALTER TABLE captures ADD COLUMN capture_mode TEXT", []).ok();
+                self.conn.execute("ALTER TABLE captures ADD COLUMN updated TEXT", []).ok();
+                self.conn.execute("ALTER TABLE captures ADD COLUMN session_ref TEXT", []).ok();
+            }
+        }
+
         info!("Migrations complete.");
         Ok(())
     }

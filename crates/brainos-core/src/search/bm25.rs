@@ -16,9 +16,15 @@ pub fn search_bm25(store: &Store, query: &str, limit: u32) -> Result<Vec<SearchR
         if let Some(capture) = store.get_capture(&id)? {
             seen.insert(capture.id.clone());
             let snippet = build_snippet(&capture.body_text, query);
+            let body_preview = if capture.body_text.len() > 200 {
+                    Some(capture.body_text[..200].to_string())
+                } else {
+                    Some(capture.body_text.clone())
+                };
             results.push(SearchResult {
                 capture: CaptureOverview {
                     id: capture.id,
+                    file_path: capture.file_path,
                     title: capture.title,
                     summary: capture.summary,
                     space: capture.space,
@@ -29,6 +35,7 @@ pub fn search_bm25(store: &Store, query: &str, limit: u32) -> Result<Vec<SearchR
                     projects: capture.projects,
                     color: capture.color,
                     icon: capture.icon,
+                    body_preview,
                 },
                 score: -score, // FTS5 rank is negative (lower = better)
                 snippet,
@@ -49,9 +56,15 @@ pub fn search_bm25(store: &Store, query: &str, limit: u32) -> Result<Vec<SearchR
             if let Some(capture) = store.get_capture(&id)? {
                 seen.insert(capture.id.clone());
                 let snippet = build_snippet(&capture.body_text, query);
+                let body_preview = if capture.body_text.len() > 200 {
+                        Some(capture.body_text[..200].to_string())
+                    } else {
+                        Some(capture.body_text.clone())
+                    };
                 results.push(SearchResult {
                     capture: CaptureOverview {
                         id: capture.id,
+                        file_path: capture.file_path,
                         title: capture.title,
                         summary: capture.summary,
                         space: capture.space,
@@ -62,6 +75,7 @@ pub fn search_bm25(store: &Store, query: &str, limit: u32) -> Result<Vec<SearchR
                         projects: capture.projects,
                         color: capture.color,
                         icon: capture.icon,
+                        body_preview,
                     },
                     score: 0.0, // LIKE results have no BM25 score
                     snippet,

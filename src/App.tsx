@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useStore } from "./store";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import type { ImperativePanelHandle } from "react-resizable-panels";
@@ -49,9 +50,13 @@ export default function App() {
   // Center panel is empty when mainMode is null and no search results
   const centerEmpty = mainMode === null && !showSearchResults;
 
-  // Load captures on mount
+  // Load captures on mount + auto-refresh on backend changes
   useEffect(() => {
     loadCaptures();
+    const unlisten = listen("kb-capture-changed", () => {
+      loadCaptures();
+    });
+    return () => { unlisten.then((fn) => fn()); };
   }, [loadCaptures]);
 
   // Sync left dock panel collapse/expand with store state

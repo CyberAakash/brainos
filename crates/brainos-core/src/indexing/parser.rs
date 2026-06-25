@@ -52,6 +52,15 @@ struct Frontmatter {
     /// Card icon (emoji)
     #[serde(default)]
     icon: Option<String>,
+    /// Capture mode: session | range | post-hoc
+    #[serde(default)]
+    capture_mode: Option<String>,
+    /// Date of last update
+    #[serde(default)]
+    updated: Option<String>,
+    /// Session ID or transcript path
+    #[serde(default)]
+    session_ref: Option<String>,
 }
 
 /// Parse a capture markdown file into a Capture struct
@@ -77,6 +86,7 @@ pub fn parse_capture_file(path: &Path) -> Result<Capture> {
         .unwrap_or_default();
 
     let status = match fm.status.as_deref() {
+        Some("resolved") => CaptureStatus::Resolved,
         Some("archived") => CaptureStatus::Archived,
         _ => CaptureStatus::Active,
     };
@@ -106,6 +116,9 @@ pub fn parse_capture_file(path: &Path) -> Result<Capture> {
         body_text: body.to_string(),
         color: fm.color,
         icon: fm.icon,
+        capture_mode: fm.capture_mode,
+        updated: fm.updated,
+        session_ref: fm.session_ref,
     })
 }
 

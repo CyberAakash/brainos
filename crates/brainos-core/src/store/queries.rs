@@ -24,8 +24,8 @@ impl Store {
             "INSERT INTO captures (id, file_path, file_hash, title, summary, space, type, status, date,
                 confidence, repo, workspace, session_tool, body_text,
                 project_name, project_path, git_json, chain_prev, chain_refs_json, links_json,
-                color, icon)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
+                color, icon, capture_mode, updated, session_ref)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)
              ON CONFLICT(id) DO UPDATE SET
                 file_path=excluded.file_path, file_hash=excluded.file_hash, title=excluded.title,
                 summary=excluded.summary, space=excluded.space, type=excluded.type, status=excluded.status,
@@ -35,6 +35,7 @@ impl Store {
                 project_path=excluded.project_path, git_json=excluded.git_json,
                 chain_prev=excluded.chain_prev, chain_refs_json=excluded.chain_refs_json,
                 links_json=excluded.links_json, color=excluded.color, icon=excluded.icon,
+                capture_mode=excluded.capture_mode, updated=excluded.updated, session_ref=excluded.session_ref,
                 updated_at=datetime('now')",
             params![
                 capture.id,                         // ?1
@@ -59,6 +60,9 @@ impl Store {
                 links_json,                         // ?20
                 &capture.color,                     // ?21
                 &capture.icon,                      // ?22
+                &capture.capture_mode,              // ?23
+                &capture.updated,                   // ?24
+                &capture.session_ref,               // ?25
             ],
         )?;
 
@@ -140,7 +144,7 @@ impl Store {
             "SELECT id, file_path, file_hash, title, summary, space, type, status, date,
                     confidence, repo, workspace, session_tool, body_text,
                     project_name, project_path, git_json, chain_prev, chain_refs_json, links_json,
-                    color, icon
+                    color, icon, capture_mode, updated, session_ref
              FROM captures WHERE id = ?1"
         )?;
 
@@ -168,6 +172,9 @@ impl Store {
                 links_json: row.get(19)?,
                 color: row.get(20)?,
                 icon: row.get(21)?,
+                capture_mode: row.get(22)?,
+                updated: row.get(23)?,
+                session_ref: row.get(24)?,
             })
         }).optional()?;
 
@@ -199,6 +206,7 @@ impl Store {
                     .unwrap_or_default();
 
                 let status = match row.status.as_deref() {
+                    Some("resolved") => CaptureStatus::Resolved,
                     Some("archived") => CaptureStatus::Archived,
                     _ => CaptureStatus::Active,
                 };
@@ -228,6 +236,9 @@ impl Store {
                     body_text: row.body_text,
                     color: row.color,
                     icon: row.icon,
+                    capture_mode: row.capture_mode,
+                    updated: row.updated,
+                    session_ref: row.session_ref,
                 }))
             }
             None => Ok(None),
@@ -236,7 +247,7 @@ impl Store {
 
     pub fn list_captures(&self, filters: &CaptureFilters, limit: u32, offset: u32) -> Result<Vec<CaptureOverview>> {
         let mut sql = String::from(
-            "SELECT c.id, c.title, c.summary, c.space, c.type, c.status, c.date, c.color, c.icon FROM captures c WHERE 1=1"
+            "SELECT c.id, c.file_path, c.title, c.summary, c.space, c.type, c.status, c.date, c.color, c.icon, SUBSTR(c.body_text, 1, 200) FROM captures c WHERE 1=1"
         );
         let mut bind_values: Vec<String> = Vec::new();
 
@@ -280,14 +291,16 @@ impl Store {
         let rows = stmt.query_map(params.as_slice(), |row| {
             Ok(CaptureOverviewRow {
                 id: row.get(0)?,
-                title: row.get(1)?,
-                summary: row.get(2)?,
-                space: row.get(3)?,
-                capture_type: row.get(4)?,
-                status: row.get(5)?,
-                date: row.get(6)?,
-                color: row.get(7)?,
-                icon: row.get(8)?,
+                file_path: row.get(1)?,
+                title: row.get(2)?,
+                summary: row.get(3)?,
+                space: row.get(4)?,
+                capture_type: row.get(5)?,
+                status: row.get(6)?,
+                date: row.get(7)?,
+                color: row.get(8)?,
+                icon: row.get(9)?,
+                body_preview: row.get(10)?,
             })
         })?;
 
@@ -297,11 +310,13 @@ impl Store {
             let tags = self.get_tags(&row.id)?;
             let projects = self.get_projects(&row.id)?;
             let status = match row.status.as_deref() {
+                Some("resolved") => CaptureStatus::Resolved,
                 Some("archived") => CaptureStatus::Archived,
                 _ => CaptureStatus::Active,
             };
             captures.push(CaptureOverview {
                 id: row.id,
+                file_path: row.file_path,
                 title: row.title,
                 summary: row.summary,
                 space: serde_json::from_str(&format!("\"{}\"", row.space)).unwrap_or(Space::Work),
@@ -312,6 +327,7 @@ impl Store {
                 projects,
                 color: row.color,
                 icon: row.icon,
+                body_preview: row.body_preview,
             });
         }
         Ok(captures)
@@ -532,10 +548,14 @@ struct CaptureRow {
     links_json: Option<String>,
     color: Option<String>,
     icon: Option<String>,
+    capture_mode: Option<String>,
+    updated: Option<String>,
+    session_ref: Option<String>,
 }
 
 struct CaptureOverviewRow {
     id: String,
+    file_path: String,
     title: String,
     summary: Option<String>,
     space: String,
@@ -544,6 +564,7 @@ struct CaptureOverviewRow {
     date: String,
     color: Option<String>,
     icon: Option<String>,
+    body_preview: Option<String>,
 }
 
 // ── Workspace Root operations ────────────────────────────────

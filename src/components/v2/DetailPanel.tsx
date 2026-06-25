@@ -4,6 +4,43 @@ import { api } from "@/lib/ipc";
 import type { Capture, CaptureStatus } from "@/lib/ipc";
 import CanvasMarkdown from "./CanvasMarkdown";
 
+/* ── Related capture link with hover preview ── */
+function RelatedLink({ id, label, icon, onClick }: {
+  id: string; label?: string; icon: React.ReactNode; onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const overview = useStore((s) => s.captures.find((c) => c.id === id));
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", fontSize: "13px", color: hovered ? "var(--accent)" : "var(--text-secondary)" }}
+      >
+        {icon}
+        {label && <span style={{ fontSize: 11, color: "var(--text-faint)", marginRight: 2 }}>{label}</span>}
+        {overview?.title || id}
+      </button>
+      {hovered && overview?.body_preview && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 4px)", left: 0,
+          width: 280, background: "var(--bg-card)", border: "1px solid var(--border-subtle)",
+          borderRadius: 10, padding: "10px 12px",
+          boxShadow: "0 12px 32px rgba(var(--shadow-color), .18)",
+          zIndex: 100, pointerEvents: "none", animation: "fadeIn .15s ease",
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-primary)", marginBottom: 5, lineHeight: "15px" }}>{overview.title}</div>
+          <div style={{
+            fontSize: 11.5, color: "var(--text-secondary)", lineHeight: "16px",
+            overflow: "hidden", display: "-webkit-box",
+            WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const,
+          }}>{overview.body_preview}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Parse markdown body into blocks ── */
 interface BodyBlock {
   kind: "heading" | "paragraph" | "code";
@@ -151,6 +188,7 @@ export default function DetailPanel() {
     setFullscreen(false);
     setShowColorPicker(false);
     setShowIconPicker(false);
+    bodyContainerRef.current?.scrollTo(0, 0);
   }, [selectedId]);
 
   // Click outside to close popovers
@@ -524,26 +562,12 @@ export default function DetailPanel() {
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--text-faint)", marginBottom: 8 }}>Chain</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {capture.chain.prev && (
-              <button onClick={() => openDetail(capture.chain!.prev!)}
-                style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", fontSize: "13px", color: "var(--text-secondary)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
-              >
-                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><polyline points="9,3 5,7 9,11" /></svg>
-                <span style={{ fontSize: 11, color: "var(--text-faint)", marginRight: 2 }}>prev</span>
-                {capture.chain.prev}
-              </button>
+              <RelatedLink id={capture.chain.prev} label="prev" onClick={() => openDetail(capture.chain!.prev!)}
+                icon={<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><polyline points="9,3 5,7 9,11" /></svg>} />
             )}
             {capture.chain.refs.map((refId) => (
-              <button key={refId} onClick={() => openDetail(refId)}
-                style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", fontSize: "13px", color: "var(--text-secondary)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
-              >
-                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><polyline points="5,3 9,7 5,11" /></svg>
-                <span style={{ fontSize: 11, color: "var(--text-faint)", marginRight: 2 }}>ref</span>
-                {refId}
-              </button>
+              <RelatedLink key={refId} id={refId} label="ref" onClick={() => openDetail(refId)}
+                icon={<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><polyline points="5,3 9,7 5,11" /></svg>} />
             ))}
           </div>
         </div>
@@ -573,14 +597,8 @@ export default function DetailPanel() {
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--text-faint)", marginBottom: 8 }}>Related captures</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {capture.related.map((relId) => (
-              <button key={relId} onClick={() => openDetail(relId)}
-                style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", fontSize: "13.5px", color: "var(--text-secondary)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
-              >
-                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><polyline points="5,3 9,7 5,11" /></svg>
-                {relId}
-              </button>
+              <RelatedLink key={relId} id={relId} onClick={() => openDetail(relId)}
+                icon={<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><polyline points="5,3 9,7 5,11" /></svg>} />
             ))}
           </div>
         </div>

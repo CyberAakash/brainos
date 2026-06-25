@@ -888,7 +888,7 @@ export const useStore = create<AppState>((set, get) => ({
       const capture = await api.createCapture(title, space, captureType, tags, body, finalOpts);
       set((s) => ({
         captures: [
-          { id: capture.id, title: capture.title, summary: capture.summary, space: capture.space, capture_type: capture.capture_type, status: capture.status, date: capture.date, tags: capture.tags, projects: capture.projects, color: capture.color, icon: capture.icon },
+          { id: capture.id, file_path: capture.file_path, title: capture.title, summary: capture.summary, space: capture.space, capture_type: capture.capture_type, status: capture.status, date: capture.date, tags: capture.tags, projects: capture.projects, color: capture.color, icon: capture.icon, body_preview: capture.body_text?.slice(0, 200) },
           ...s.captures,
         ],
         captureCache: { ...s.captureCache, [capture.id]: capture },

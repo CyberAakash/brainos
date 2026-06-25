@@ -80,6 +80,8 @@ pub fn create_capture_file(
     chain_prev: Option<String>,
     color: Option<String>,
     icon: Option<String>,
+    capture_mode: Option<String>,
+    session_ref: Option<String>,
 ) -> Result<Capture, String> {
     let store = store.0.lock().map_err(|e| e.to_string())?;
     let opts = brainos_core::files::CreateCaptureOpts {
@@ -90,6 +92,8 @@ pub fn create_capture_file(
         chain_prev,
         color,
         icon,
+        capture_mode,
+        session_ref,
     };
     let capture = brainos_core::files::create_file(&store, &config.0.general.kb_root, &title, &space, &capture_type, &tags, &body, Some(&opts))
         .map_err(|e| e.to_string())?;
@@ -325,8 +329,16 @@ pub fn get_captures_for_entity(
     let mut captures = Vec::new();
     for id in capture_ids.iter().take(limit.unwrap_or(50) as usize) {
         if let Some(c) = store.get_capture(id).map_err(|e| e.to_string())? {
+            let body_preview = if c.body_text.len() > 200 {
+                Some(c.body_text[..200].to_string())
+            } else if !c.body_text.is_empty() {
+                Some(c.body_text.clone())
+            } else {
+                None
+            };
             captures.push(CaptureOverview {
                 id: c.id,
+                file_path: c.file_path,
                 title: c.title,
                 summary: c.summary,
                 space: c.space,
@@ -337,6 +349,7 @@ pub fn get_captures_for_entity(
                 projects: c.projects,
                 color: c.color,
                 icon: c.icon,
+                body_preview,
             });
         }
     }

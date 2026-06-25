@@ -284,6 +284,7 @@ export default function HomeView() {
                   key={c.id}
                   style={{
                     display: "inline-block", flexShrink: 0,
+                    position: "relative",
                     marginLeft: i === 0 ? 0 : -20,
                     zIndex: isHovered ? 60 : zBase,
                     animation: `fanIn .55s cubic-bezier(.2,.85,.25,1) both`,

@@ -27,11 +27,18 @@ pub struct Capture {
     pub body_text: String,
     pub color: Option<String>,
     pub icon: Option<String>,
+    /// Capture mode: "session" | "range" | "post-hoc"
+    pub capture_mode: Option<String>,
+    /// Date of last update (ISO format)
+    pub updated: Option<String>,
+    /// Session ID or transcript path
+    pub session_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaptureOverview {
     pub id: String,
+    pub file_path: String,
     pub title: String,
     pub summary: Option<String>,
     pub space: Space,
@@ -42,6 +49,8 @@ pub struct CaptureOverview {
     pub projects: Vec<String>,
     pub color: Option<String>,
     pub icon: Option<String>,
+    /// First ~200 chars of body text for hover preview
+    pub body_preview: Option<String>,
 }
 
 /// Project context for a capture
@@ -91,12 +100,14 @@ pub struct Link {
     pub label: Option<String>,
 }
 
-/// Capture lifecycle status — simple two-state model.
+/// Capture lifecycle status.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CaptureStatus {
     #[default]
     Active,
+    /// Issue fixed / decision finalized — still searchable but signals completion.
+    Resolved,
     /// Manually archived — excluded from search and browse by default.
     Archived,
 }
@@ -105,6 +116,7 @@ impl std::fmt::Display for CaptureStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Active => write!(f, "active"),
+            Self::Resolved => write!(f, "resolved"),
             Self::Archived => write!(f, "archived"),
         }
     }
